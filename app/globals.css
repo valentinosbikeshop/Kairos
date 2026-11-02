@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: #0E0D10;
+  color: #DDD7CC;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior-y: none;
+}
+
+/* Soft ambient gothic stone glow at top of chassis */
+.gothic-sanctuary-bg {
+  background-image: radial-gradient(
+    ellipse 85% 240px at 50% 0%,
+    rgba(181, 160, 130, 0.065),
+    transparent 75%
+  );
+}
+
+/* Subtle gothic ornamental hairline divider */
+.gothic-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(181, 160, 130, 0.24) 50%,
+    transparent 100%
+  );
+}
+
+/* Prevent horizontal digit jumping without harsh terminal aesthetics */
+.font-mono,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Prevent iOS Safari auto-zoom on input focus and clean number spinners */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #B5A082;
+  border: 2px solid #0E0D10;
+  cursor: pointer;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

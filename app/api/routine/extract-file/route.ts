@@ -2,7 +2,18 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { NextResponse } from 'next/server';
-import { parseRoutineFromExtractedText } from '@/lib/routineFileExtractor';
+import {
+  parseRoutineFromExtractedText,
+  RoutineExtractionResult,
+} from '@/lib/routineFileExtractor';
+import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
+import { toLocalDateKey, uid } from '@/lib/formatters';
+import {
+  RoutineDayPlan,
+  RoutineExercisePrescription,
+  RoutineScheduleType,
+  TrainingMode,
+} from '@/types/kairos';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +21,142 @@ interface PdfTextItemLike {
   str?: string;
   transform?: number[];
   hasEOL?: boolean;
+}
+
+/**
+ * Uses Gemini AI to understand contextual routine notes, extract performance loads (targetWeightKg),
+ * preserve all biomechanical and equipment details ("en máquina", "en smith", "con mancuernas"),
+ * and cleanly separate adjacent workout sections without header contamination.
+ */
+async function extractStructuredRoutineWithGemini(
+  rawText: string,
+  fileName?: string
+): Promise<RoutineExtractionResult | null> {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) return null;
+
+  try {
+    const prompt =
+      `Eres el motor de análisis y extracción de entrenamientos de KAIROS (app de fitness y biomecánica avanzada).\n` +
+      `Tu objetivo es transformar el texto sin formato provisto por el usuario (copiado de notas, WhatsApp, o portapapeles) en una rutina estructurada y limpia.\n\n` +
+      `REGLAS CRÍTICAS DE EXTRACCIÓN:\n` +
+      `1. Nombres de ejercicios: Conserva SIEMPRE detalles biomecánicos y de equipamiento (ej: 'en máquina', 'con mancuernas', 'en polea', 'en smith', 'agarre neutro', 'unilateral', 'inclinado 30°'). NUNCA elimines estos modificadores del nombre.\n` +
+      `2. Eliminación de RUIDO en el nombre: NUNCA dejes en el nombre cargas/pesos (ej: '120kg'), series/reps (ej: ': 2', '4x10'), ni nombres de secciones o días adyacentes (ej: '2. Espalda').\n` +
+      `3. Cargas y Pesos (targetWeightKg): Si el texto indica el peso con el que entrena o levantó el usuario (ej: '120kg', '80kg', '40 lbs'), extráelo como número en 'targetWeightKg'.\n` +
+      `4. Series y Repeticiones: Si el texto dice '120kg : 2' significa 2 series con 120kg. Extrae 'sets', 'repsNum', 'repRangeLabel', 'rir' ('0'|'1'|'2'|'3'), 'restSeconds'.\n` +
+      `5. Agrupación por Días o Secciones: Si hay títulos como '2. Espalda', 'Lunes - Pecho', 'Día 1: Torso', crea un día o sección separado para cada uno. Jamás agregues el título de un día dentro del nombre de un ejercicio.\n\n` +
+      `Texto a analizar:\n"""\n${rawText.slice(0, 8000)}\n"""\n\n` +
+      `Responde ÚNICAMENTE un JSON con esta estructura exacta (sin markdown ni explicaciones adicionales):\n` +
+      `{\n` +
+      `  "routineName": "${fileName || 'Rutina Personalizada'}",\n` +
+      `  "scheduleType": "cyclic",\n` +
+      `  "days": [\n` +
+      `    {\n` +
+      `      "label": "Día 1",\n` +
+      `      "focusTitle": "Pecho y Tríceps",\n` +
+      `      "isRestDay": false,\n` +
+      `      "primaryMode": "hypertrophy",\n` +
+      `      "exercises": [\n` +
+      `        {\n` +
+      `          "name": "Press Plano en Máquina",\n` +
+      `          "sets": 2,\n` +
+      `          "repsNum": 10,\n` +
+      `          "repRangeLabel": "8-10 reps",\n` +
+      `          "rir": "2",\n` +
+      `          "restSeconds": 105,\n` +
+      `          "targetWeightKg": 120\n` +
+      `        }\n` +
+      `      ]\n` +
+      `    }\n` +
+      `  ]\n` +
+      `}`;
+
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+          },
+        }),
+      }
+    );
+
+    if (!resp.ok) return null;
+    const json = (await resp.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+    const rawAi = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!rawAi) return null;
+
+    const parsedData = JSON.parse(rawAi);
+    if (!parsedData || !Array.isArray(parsedData.days) || parsedData.days.length === 0) {
+      return null;
+    }
+
+    const days: RoutineDayPlan[] = parsedData.days.map((d: any, dIdx: number) => {
+      const exercises: RoutineExercisePrescription[] = Array.isArray(d.exercises)
+        ? d.exercises.map((e: any) => {
+            const resolved = resolveExerciseIntelligently(e.name || 'Ejercicio');
+            return {
+              catalogId: resolved.canonicalCatalogId,
+              name: e.name || resolved.canonicalName,
+              mode: (e.mode as TrainingMode) || resolved.mode,
+              sets: typeof e.sets === 'number' && e.sets > 0 ? e.sets : 3,
+              repsNum: typeof e.repsNum === 'number' && e.repsNum > 0 ? e.repsNum : 10,
+              repRangeLabel: e.repRangeLabel || `${e.repsNum || 10} reps`,
+              rir: (['0', '1', '2', '3'].includes(e.rir) ? e.rir : '2') as any,
+              restSeconds:
+                typeof e.restSeconds === 'number' && e.restSeconds > 0
+                  ? e.restSeconds
+                  : resolved.defaultRestSeconds,
+              targetWeightKg:
+                typeof e.targetWeightKg === 'number' && e.targetWeightKg > 0
+                  ? e.targetWeightKg
+                  : undefined,
+              note: e.note || undefined,
+            };
+          })
+        : [];
+
+      return {
+        id: uid('rday'),
+        label: d.label || `Día ${dIdx + 1}`,
+        focusTitle: d.focusTitle || 'Entrenamiento',
+        isRestDay: Boolean(d.isRestDay),
+        primaryMode: (d.primaryMode as TrainingMode) || 'hypertrophy',
+        estimatedMinutes: Math.max(35, exercises.length * 10),
+        exercises,
+      };
+    });
+
+    const activeDaysCount = days.filter((d) => !d.isRestDay).length;
+    const totalExercisesCount = days.reduce((acc, d) => acc + d.exercises.length, 0);
+
+    return {
+      routine: {
+        id: uid('rtn'),
+        name: parsedData.routineName || fileName || 'Rutina Personalizada',
+        scheduleType: (parsedData.scheduleType as RoutineScheduleType) || 'cyclic',
+        source: 'manual',
+        createdAtIso: new Date().toISOString(),
+        cycleAnchorDateKey: toLocalDateKey(),
+        cycleOffsetDays: 0,
+        adaptedOverride: null,
+        days,
+      },
+      detectedScheduleType: (parsedData.scheduleType as RoutineScheduleType) || 'cyclic',
+      activeDaysCount,
+      totalExercisesCount,
+      warnings: [],
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -156,7 +303,14 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      const parsed = parseRoutineFromExtractedText(rawText, body.fileName);
+      // 1. Try contextual Gemini AI extraction if key is present
+      const geminiResult = await extractStructuredRoutineWithGemini(rawText, body.fileName);
+      // 2. Fallback to enhanced local deterministic regex & AST parser
+      const parsed =
+        geminiResult && geminiResult.totalExercisesCount > 0
+          ? geminiResult
+          : parseRoutineFromExtractedText(rawText, body.fileName);
+
       return NextResponse.json({
         ok: true,
         extractedText: rawText,
@@ -223,7 +377,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const parsed = parseRoutineFromExtractedText(combinedText, primaryFileName);
+    // 1. Try contextual Gemini AI extraction if key is present
+    const geminiResult = await extractStructuredRoutineWithGemini(combinedText, primaryFileName);
+    // 2. Fallback to enhanced local deterministic regex & AST parser
+    const parsed =
+      geminiResult && geminiResult.totalExercisesCount > 0
+        ? geminiResult
+        : parseRoutineFromExtractedText(combinedText, primaryFileName);
 
     return NextResponse.json({
       ok: true,

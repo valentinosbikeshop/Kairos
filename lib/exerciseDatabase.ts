@@ -183,7 +183,16 @@ export const BUILTIN_EXERCISES: ExerciseCatalogItem[] = [
   {
     id: 'hyp_chest_press_machine',
     name: 'Press de Pecho Convergente en Máquina',
-    aliases: ['maquina pecho', 'chest press', 'hammer pecho'],
+    aliases: [
+      'maquina pecho',
+      'chest press',
+      'hammer pecho',
+      'press plano maquina',
+      'press plano en maquina',
+      'press pecho maquina',
+      'press en maquina',
+      'press horizontal maquina',
+    ],
     mode: 'hypertrophy',
     muscleGroup: 'Pectoral',
     defaultRestSeconds: 105,

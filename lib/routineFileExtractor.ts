@@ -8,7 +8,10 @@ import {
 } from '@/types/kairos';
 import { ORDERED_WEEKDAYS } from '@/lib/aiRoutineEngine';
 import { BUILTIN_EXERCISES, smartSearchExercises } from '@/lib/exerciseDatabase';
-import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
+import {
+  extractStructuredExerciseTokens,
+  resolveExerciseIntelligently,
+} from '@/lib/exerciseClassifierEngine';
 import { toLocalDateKey, uid } from '@/lib/formatters';
 
 export interface RoutineExtractionResult {
@@ -138,11 +141,11 @@ function matchBestCatalogExercise(cleanExerciseName: string): {
 }
 
 /**
- * Parses a single candidate exercise line (from OCR or PDF row) into a RoutineExercisePrescription.
+ * Parses a single candidate exercise line (from OCR or text block) into a RoutineExercisePrescription.
  * Returns null if the line is noise / header / non-exercise text.
  */
 export function parseExerciseLine(rawLine: string): RoutineExercisePrescription | null {
-  let line = rawLine
+  const line = rawLine
     .replace(/[\u2013\u2014]/g, '-')
     .replace(/[|¦]/g, ' ')
     .replace(/\t+/g, '  ')
@@ -161,151 +164,25 @@ export function parseExerciseLine(rawLine: string): RoutineExercisePrescription 
 
   const hadBulletOrNumberPrefix = /^(?:[a-d]?\d{1,2}[.):\-]\s+|[•\-*▪◦►▸]\s+)/i.test(line);
 
-  // Strip leading numbering / bullets like "1.", "1)", "A1.", "B2 -", "•"
-  line = line.replace(/^(?:[a-d]?\d{1,2}[.):\-]\s+|[•\-*▪◦►▸]\s+)/i, '').trim();
-  if (line.length < 3) return null;
-
-  let sets = 3;
-  let repsNum = 10;
-  let repRangeLabel = '8–12 reps';
-  let rir: RirValue = '2';
-  let restSeconds: number | undefined;
-  let foundExplicitPrescription = false;
-
-  // 1. Extract Rest time if present (e.g. "90s", "120 seg", "2 min", "2'")
-  const restSecMatch = line.match(/\b(\d{2,3})\s*(?:seg(?:undos)?|s|'')\b(?:\s*descanso)?/i);
-  const restMinMatch = line.match(
-    /\b(\d(?:[.,]\d)?)\s*(?:min(?:utos)?|')\s*(?:de\s*descanso|descanso|pausa)?\b/i
-  );
-  if (restSecMatch && Number(restSecMatch[1]) >= 25 && Number(restSecMatch[1]) <= 360) {
-    restSeconds = Number(restSecMatch[1]);
-    line = line.replace(restSecMatch[0], ' ');
-  } else if (
-    restMinMatch &&
-    (/descanso|pausa|rest|'/i.test(restMinMatch[0]) || /\d\s*[x×]/i.test(line))
-  ) {
-    const mins = parseFloat(restMinMatch[1].replace(',', '.'));
-    if (mins >= 0.5 && mins <= 6) {
-      restSeconds = Math.round(mins * 60);
-      line = line.replace(restMinMatch[0], ' ');
-    }
-  }
-
-  // 2. Extract RIR / RPE / Failure
-  const rirMatch = line.match(/\bRIR\s*[:=]?\s*([0-4])(?:\s*[-/]\s*[0-4])?\+?/i);
-  const rpeMatch = line.match(/\b(?:RPE|@)\s*[:=]?\s*(10|[6-9](?:[.,]5)?)\b/i);
-  if (rirMatch) {
-    const val = rirMatch[1];
-    rir = (['0', '1', '2', '3'].includes(val) ? val : '2') as RirValue;
-    line = line.replace(rirMatch[0], ' ');
-  } else if (rpeMatch) {
-    const rpeVal = parseFloat(rpeMatch[1].replace(',', '.'));
-    rir = rpeVal >= 9.5 ? '0' : rpeVal >= 8.5 ? '1' : rpeVal >= 7.5 ? '2' : '3';
-    line = line.replace(rpeMatch[0], ' ');
-  } else if (/\bal\s+fallo\b/i.test(line)) {
-    rir = '0';
-    line = line.replace(/\bal\s+fallo\b/i, ' ');
-  }
-
-  // 3. Extract Sets x Reps or Sets x Time
-  // Pattern A: "4 x 8-10", "3x12", "4×10/12", "3 x 45 seg", "4 x 1 min"
-  const setsXTimeMatch = line.match(
-    /\b([1-9]|10)\s*[x×X*]\s*(\d{1,3})\s*(seg(?:undos)?|s|min(?:utos)?)\b/i
-  );
-  const setsXRepsMatch = line.match(
-    /\b([1-9]|10)\s*(?:series?\s*(?:de|[x×X])\s*|[x×X*]\s*)(\d{1,3})(?:\s*[-/a]\s*(\d{1,3}))?\s*(?:reps?|repeticiones|c\/u|por\s*pierna|por\s*lado)?\b/i
-  );
-  // Pattern B: Tabular PDF columns at end of line: "Press Militar   4   8-10" or "Sentadilla  4  8"
-  const tabularMatch = line.match(
-    /^(.{4,}?)\s{2,}([1-9])\s+(\d{1,2}(?:\s*[-/]\s*\d{1,2})?)\s*(?:reps?)?$/i
-  );
-
-  if (setsXTimeMatch) {
-    foundExplicitPrescription = true;
-    sets = Math.max(1, Math.min(10, parseInt(setsXTimeMatch[1], 10)));
-    const amt = parseInt(setsXTimeMatch[2], 10);
-    const isMin = /min/i.test(setsXTimeMatch[3]);
-    repsNum = isMin ? amt * 60 : amt;
-    repRangeLabel = isMin ? `${amt} min` : `${amt}s`;
-    line = line.replace(setsXTimeMatch[0], ' ');
-  } else if (setsXRepsMatch) {
-    foundExplicitPrescription = true;
-    sets = Math.max(1, Math.min(10, parseInt(setsXRepsMatch[1], 10)));
-    const low = parseInt(setsXRepsMatch[2], 10);
-    const high = setsXRepsMatch[3] ? parseInt(setsXRepsMatch[3], 10) : null;
-    repsNum = high ? high : low;
-    repRangeLabel = high ? `${low}–${high} reps` : `${low} reps`;
-    line = line.replace(setsXRepsMatch[0], ' ');
-  } else if (tabularMatch) {
-    foundExplicitPrescription = true;
-    line = tabularMatch[1];
-    sets = Math.max(1, Math.min(10, parseInt(tabularMatch[2], 10)));
-    const rawRange = tabularMatch[3].replace(/\s+/g, '').replace(/[-/]/g, '–');
-    const nums = rawRange.split('–').map((n) => parseInt(n, 10));
-    repsNum = nums[nums.length - 1] || 10;
-    repRangeLabel = `${rawRange} reps`;
-  } else {
-    // Pattern C: "4 series" and "10-12 repeticiones" separated
-    const seriesWordMatch = line.match(/\b([1-9])\s*series?\b/i);
-    const repsWordMatch = line.match(/\b(\d{1,2})(?:\s*[-/a]\s*(\d{1,2}))?\s*(?:reps?|repeticiones)\b/i);
-    if (seriesWordMatch || repsWordMatch) {
-      foundExplicitPrescription = true;
-      if (seriesWordMatch) {
-        sets = parseInt(seriesWordMatch[1], 10);
-        line = line.replace(seriesWordMatch[0], ' ');
-      }
-      if (repsWordMatch) {
-        const low = parseInt(repsWordMatch[1], 10);
-        const high = repsWordMatch[2] ? parseInt(repsWordMatch[2], 10) : null;
-        repsNum = high ?? low;
-        repRangeLabel = high ? `${low}–${high} reps` : `${low} reps`;
-        line = line.replace(repsWordMatch[0], ' ');
-      }
-    } else {
-      // Pattern D: Single-space table columns ("Press Militar 4 8-10") or OCR-dropped 'x' ("Press Militar 310" / "412")
-      const singleSpaceTableMatch = line.match(
-        /^(.{4,}?)\s+([2-6])\s+(\d{1,2}(?:\s*[-/]\s*\d{1,2})?)\s*(?:reps?)?$/i
-      );
-      const ocrDroppedXMatch = line.match(/^(.{4,}?)\s+([2-5])(1[025]|0?[68])$/i);
-
-      if (singleSpaceTableMatch) {
-        foundExplicitPrescription = true;
-        line = singleSpaceTableMatch[1];
-        sets = parseInt(singleSpaceTableMatch[2], 10);
-        const rawRange = singleSpaceTableMatch[3].replace(/\s+/g, '').replace(/[-/]/g, '–');
-        const nums = rawRange.split('–').map((n) => parseInt(n, 10));
-        repsNum = nums[nums.length - 1] || 10;
-        repRangeLabel = `${rawRange} reps`;
-      } else if (ocrDroppedXMatch) {
-        foundExplicitPrescription = true;
-        line = ocrDroppedXMatch[1];
-        sets = parseInt(ocrDroppedXMatch[2], 10);
-        repsNum = parseInt(ocrDroppedXMatch[3], 10);
-        repRangeLabel = `${repsNum} reps`;
-      }
-    }
-  }
-
-  // Clean residual punctuation from exercise name
-  const cleanName = line
-    .replace(/\(\s*\)/g, '')
-    .replace(/\b(?:descanso|pausa|series|reps|repeticiones)\b/gi, '')
-    .replace(/^[\s:\-–—•*.,/]+|[\s:\-–—•*.,/]+$/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  // Extract structured tokens (weight, sets, reps, rir, rest, cleanName, leaked next section)
+  const tokens = extractStructuredExerciseTokens(line);
+  const cleanName = tokens.cleanName;
 
   if (cleanName.length < 3) return null;
-  // Must contain letters
   if (!/[a-záéíóúñ]{3,}/i.test(cleanName)) return null;
 
   const hasExerciseKeyword = EXERCISE_KEYWORD_HINT_REGEX.test(cleanName);
+  const foundExplicitPrescription =
+    tokens.sets !== undefined ||
+    tokens.repsNum !== undefined ||
+    tokens.targetWeightKg !== undefined;
 
-  // If there was neither sets×reps, nor an exercise keyword, nor a numbered/bulleted item in an active day, ignore noise
+  // If there was neither explicit prescription, nor exercise keyword, nor bullet prefix, ignore noise
   if (!foundExplicitPrescription && !hasExerciseKeyword && !hadBulletOrNumberPrefix) {
     return null;
   }
 
-  // Reject general non-exercise instructions like "Dormir 8 horas" or "Tomar creatina 5g"
+  // Reject general non-exercise instructions
   if (
     !hasExerciseKeyword &&
     /\b(?:dormir|agua|prote[ií]na|creatina|kcal|calor[ií]as|gramos|comida|desayuno|cena|pasos\s+diarios)\b/i.test(
@@ -315,17 +192,19 @@ export function parseExerciseLine(rawLine: string): RoutineExercisePrescription 
     return null;
   }
 
-  const matched = matchBestCatalogExercise(cleanName);
+  const resolved = resolveExerciseIntelligently(cleanName);
 
   return {
-    catalogId: matched.catalogId,
-    name: matched.displayName,
-    mode: matched.mode,
-    sets,
-    repsNum,
-    repRangeLabel,
-    rir,
-    restSeconds: restSeconds ?? matched.defaultRestSeconds,
+    catalogId: resolved.canonicalCatalogId,
+    name: resolved.canonicalName,
+    mode: resolved.mode,
+    sets: tokens.sets ?? 3,
+    repsNum: tokens.repsNum ?? 10,
+    repRangeLabel: tokens.repRangeLabel ?? '8–12 reps',
+    rir: tokens.rir ?? '2',
+    restSeconds: tokens.restSeconds ?? resolved.defaultRestSeconds,
+    targetWeightKg: tokens.targetWeightKg,
+    leakedNextSection: tokens.leakedNextSection,
   };
 }
 
@@ -434,7 +313,26 @@ export function parseRoutineFromExtractedText(
         buckets.push(currentBucket);
       }
       currentBucket.isRestDay = false;
+      const nextSection = parsedEx.leakedNextSection;
+      delete parsedEx.leakedNextSection;
       currentBucket.exercises.push(parsedEx);
+
+      // If a subsequent section header leaked into this line (e.g. ": 2. Espalda"),
+      // immediately transition to the new workout section
+      if (nextSection && nextSection.length >= 3) {
+        const cleanSection = capitalizeClean(
+          nextSection.replace(/^[\d#•\-*▪◦]+[.):\-]?\s*/, '')
+        );
+        const isRest = /\b(?:descanso|rest|libre|off)\b/i.test(cleanSection);
+        currentBucket = {
+          type: 'cyclic',
+          label: `Día ${buckets.length + 1}`,
+          explicitFocusTitle: isRest ? 'Descanso' : cleanSection,
+          isRestDay: isRest,
+          exercises: [],
+        };
+        buckets.push(currentBucket);
+      }
     }
   }
 

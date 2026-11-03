@@ -163,6 +163,7 @@ export interface WorkoutExercise {
   mode: TrainingMode;
   muscleGroup: string;
   defaultRestSeconds: number;
+  targetWeightKg?: number;
   notes?: string;
   calisthenicsSubType?: CalisthenicsSubType;
   cardioDiscipline?: CardioDiscipline;
@@ -382,7 +383,9 @@ export interface RoutineExercisePrescription {
   repRangeLabel: string;
   rir: RirValue;
   restSeconds: number;
+  targetWeightKg?: number;
   note?: string;
+  leakedNextSection?: string;
 }
 
 export interface RoutineDayPlan {

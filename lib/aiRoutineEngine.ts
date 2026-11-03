@@ -766,6 +766,7 @@ export function buildWorkoutExerciseFromPrescription(
     mode: pres.mode,
     muscleGroup: catItem?.muscleGroup ?? MODE_META[pres.mode].label,
     defaultRestSeconds: pres.restSeconds || catItem?.defaultRestSeconds || 120,
+    targetWeightKg: pres.targetWeightKg,
     notes: pres.note,
     calisthenicsSubType: catItem?.calisthenicsSubType ?? 'dynamic',
     cardioDiscipline: catItem?.cardioDiscipline ?? 'jumprope',
@@ -786,11 +787,12 @@ export function buildWorkoutExerciseFromPrescription(
     const isIso = /raise|curl|tricep|skull|copa|crunch|calf|pec_deck|face_pull|vuelos|laterales|gemelo/i.test(
       `${pres.catalogId} ${pres.name}`
     );
-    const startKg = Math.max(
+    const fallbackKg = Math.max(
       5,
       Math.round(((isLower ? bw * 0.7 : isIso ? bw * 0.22 : bw * 0.48) * loadScale) / 2.5) * 2.5
     );
-    const warmupKg = Math.max(5, Math.round((startKg * 0.6) / 2.5) * 2.5);
+    const effectiveKg = pres.targetWeightKg && pres.targetWeightKg > 0 ? pres.targetWeightKg : fallbackKg;
+    const warmupKg = Math.max(5, Math.round((effectiveKg * 0.6) / 2.5) * 2.5);
     const warmupSets = Array.from({ length: warmupCount }, () => ({
       id: uid('hy'),
       weightKg: warmupKg,
@@ -802,7 +804,7 @@ export function buildWorkoutExerciseFromPrescription(
     }));
     const effectiveSets = Array.from({ length: count }, () => ({
       id: uid('hy'),
-      weightKg: startKg,
+      weightKg: effectiveKg,
       reps: pres.repsNum || defs.defaultReps,
       rir: pres.rir || defs.defaultRir,
       setType: 'Efectiva' as const,
@@ -816,13 +818,14 @@ export function buildWorkoutExerciseFromPrescription(
   }
 
   if (pres.mode === 'strength') {
-    const startKg = Math.max(20, Math.round((bw * 0.8 * loadScale) / 2.5) * 2.5);
+    const fallbackKg = Math.max(20, Math.round((bw * 0.8 * loadScale) / 2.5) * 2.5);
+    const effectiveKg = pres.targetWeightKg && pres.targetWeightKg > 0 ? pres.targetWeightKg : fallbackKg;
     return {
       ...base,
-      referenceOneRmKg: Math.round(startKg * 1.2),
+      referenceOneRmKg: Math.round(effectiveKg * 1.15),
       strengthSets: Array.from({ length: count }, () => ({
         id: uid('st'),
-        weightKg: startKg,
+        weightKg: effectiveKg,
         reps: pres.repsNum || 5,
         rpe: 8.0,
         restSeconds: base.defaultRestSeconds,

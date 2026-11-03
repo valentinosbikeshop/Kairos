@@ -1234,6 +1234,43 @@ export function RoutineSetupConfigurator({
                             className="w-11 rounded border border-stoneborder bg-background py-0.5 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic focus:outline-none"
                           />
 
+                          <div className="flex items-center gap-0.5">
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              step="0.5"
+                              aria-label="Carga objetivo"
+                              value={
+                                ex.targetWeightKg !== undefined && ex.targetWeightKg > 0
+                                  ? ex.targetWeightKg
+                                  : ''
+                              }
+                              placeholder="kg"
+                              onChange={(e) => {
+                                const raw = e.target.value.trim();
+                                const parsed = raw === '' ? undefined : parseFloat(raw);
+                                const nextWeight =
+                                  parsed !== undefined && !isNaN(parsed) && parsed > 0
+                                    ? parsed
+                                    : undefined;
+                                setActiveManualList((prev) =>
+                                  prev.map((d) =>
+                                    d.id === day.id
+                                      ? {
+                                          ...d,
+                                          exercises: d.exercises.map((item, i) =>
+                                            i === idx ? { ...item, targetWeightKg: nextWeight } : item
+                                          ),
+                                        }
+                                      : d
+                                  )
+                                );
+                              }}
+                              className="w-12 rounded border border-stoneborder bg-background py-0.5 text-center font-mono text-[16px] tabular-nums text-gothic focus:border-gothic focus:outline-none"
+                            />
+                            <span className="text-[10px] text-brand-muted">kg</span>
+                          </div>
+
                           {day.exercises.length > 1 && (
                             <div className="flex items-center">
                               <button

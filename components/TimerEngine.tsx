@@ -18,6 +18,19 @@ import {
 import { kairosAudio } from '@/lib/audioEngine';
 import { formatTimerMs } from '@/lib/formatters';
 import {
+  startBackgroundWorkerClock,
+  stopBackgroundWorkerClock,
+  startSilentBackgroundAudio,
+  stopSilentBackgroundAudio,
+  updateLockScreenMediaSession,
+  clearLockScreenMediaSession,
+  emitLockScreenTimerNotification,
+  clearLockScreenTimerNotification,
+  requestLockNotificationPermission,
+  getNotificationPermissionStatus,
+  LockNotificationStatus,
+} from '@/lib/lockScreenTimerManager';
+import {
   ChevronDown,
   ChevronUp,
   FastForward,
@@ -77,6 +90,8 @@ interface TimerContextValue {
   cancelTimer: () => void;
   resetTimer: () => void;
   registerTimerConclusionHandler: (fn: (event: TimerConclusionEvent) => void) => void;
+  notificationPermission: LockNotificationStatus;
+  requestNotificationPermission: () => Promise<boolean>;
 }
 
 const DEFAULT_SNAPSHOT: TimerRuntimeSnapshot = {
@@ -188,6 +203,26 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
   const [isDrawerExpanded, setDrawerExpanded] = useState(false);
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [lastAutoSavedNotice, setLastAutoSavedNotice] = useState<string | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<LockNotificationStatus>(() =>
+    getNotificationPermissionStatus()
+  );
+
+  const handleRequestPermission = useCallback(async () => {
+    const granted = await requestLockNotificationPermission();
+    setNotificationPermission(getNotificationPermissionStatus());
+    return granted;
+  }, []);
+
+  const lastReportedSecRef = useRef<number>(-1);
+  const actionsRef = useRef<{
+    togglePlay: () => void;
+    skip: () => void;
+    addSec: (delta: number) => void;
+  }>({
+    togglePlay: () => undefined,
+    skip: () => undefined,
+    addSec: () => undefined,
+  });
 
   const configRef = useRef<ActiveTimerConfig | null>(null);
   const segmentsRef = useRef<TimelineSegment[]>([]);
@@ -331,6 +366,16 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
 
       emitTimerConclusion('completed', accMs);
 
+      // Lock Screen urgent notification on finish!
+      void emitLockScreenTimerNotification({
+        title: cfg.label,
+        body: '¡Tu tiempo ha terminado! Es hora de tu siguiente serie.',
+        isFinished: true,
+      });
+      clearLockScreenMediaSession();
+      stopSilentBackgroundAudio();
+      stopBackgroundWorkerClock();
+
       const lastSeg = segments[segments.length - 1];
       setSnapshot((prev) => ({
         ...prev,
@@ -375,6 +420,27 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
       }
     }
 
+    const wholeSec = Math.round(phaseRemainingMs / 1000);
+    if (wholeSec !== lastReportedSecRef.current) {
+      lastReportedSecRef.current = wholeSec;
+      updateLockScreenMediaSession({
+        title: cfg.label,
+        subtitle: `${
+          activeSeg.phase === 'work'
+            ? 'TRABAJO'
+            : activeSeg.phase === 'prep'
+              ? 'PREPARACIÓN'
+              : 'DESCANSO'
+        } · Ronda ${activeSeg.round}/${Math.max(1, cfg.totalRounds)}`,
+        durationSeconds: Math.round(activeSeg.durationMs / 1000),
+        remainingSeconds: wholeSec,
+        isRunning: isRunningRef.current,
+        onTogglePlayPause: () => actionsRef.current.togglePlay(),
+        onSkip: () => actionsRef.current.skip(),
+        onAddSeconds: (d) => actionsRef.current.addSec(d),
+      });
+    }
+
     setSnapshot((prev) => ({
       ...prev,
       isActive: true,
@@ -395,12 +461,21 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
   }, [emitTimerConclusion, wakeLockActive]);
 
   useEffect(() => {
+    let stopWorker: (() => void) | null = null;
     let rafId = 0;
-    const intervalId = setInterval(() => {
-      if (isActiveRef.current && isRunningRef.current) {
+
+    if (snapshot.isActive && snapshot.isRunning) {
+      stopWorker = startBackgroundWorkerClock(() => {
         computeAndSyncState();
+      });
+      startSilentBackgroundAudio();
+    } else {
+      stopSilentBackgroundAudio();
+      if (!snapshot.isActive) {
+        clearLockScreenMediaSession();
+        void clearLockScreenTimerNotification();
       }
-    }, 90);
+    }
 
     const loop = () => {
       if (isActiveRef.current && isRunningRef.current) {
@@ -411,18 +486,31 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
     rafId = window.requestAnimationFrame(loop);
 
     const onVisibility = () => {
-      if (document.visibilityState === 'visible' && isActiveRef.current) {
+      if (document.visibilityState === 'hidden' && isActiveRef.current && isRunningRef.current) {
+        const cfg = configRef.current;
+        if (cfg) {
+          const remSec = Math.max(0, Math.round(snapshot.phaseRemainingMs / 1000));
+          void emitLockScreenTimerNotification({
+            title: cfg.label,
+            body: `${snapshot.phase === 'rest' ? 'Descanso' : 'Trabajo'}: ${remSec}s restante`,
+            isFinished: false,
+          });
+        }
+      } else if (document.visibilityState === 'visible' && isActiveRef.current) {
         computeAndSyncState();
       }
     };
+
     document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onVisibility);
 
     return () => {
-      clearInterval(intervalId);
+      stopWorker?.();
       window.cancelAnimationFrame(rafId);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onVisibility);
     };
-  }, [computeAndSyncState]);
+  }, [computeAndSyncState, snapshot.isActive, snapshot.isRunning, snapshot.phase, snapshot.phaseRemainingMs]);
 
   const launchConfig = useCallback(
     (cfg: ActiveTimerConfig) => {
@@ -436,6 +524,14 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
 
       kairosAudio.unlock(true);
       void acquireWakeLock();
+      startSilentBackgroundAudio();
+
+      if (getNotificationPermissionStatus() === 'default') {
+        void requestLockNotificationPermission().then(() => {
+          setNotificationPermission(getNotificationPermissionStatus());
+        });
+      }
+
       configRef.current = cfg;
       segmentsRef.current = buildTimeline(cfg);
       sequenceStartMsRef.current = Date.now();
@@ -534,9 +630,11 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
     if (isRunningRef.current) {
       pausedElapsedMsRef.current = Math.max(0, Date.now() - sequenceStartMsRef.current);
       isRunningRef.current = false;
+      stopSilentBackgroundAudio();
     } else {
       sequenceStartMsRef.current = Date.now() - pausedElapsedMsRef.current;
       isRunningRef.current = true;
+      startSilentBackgroundAudio();
     }
     computeAndSyncState();
   }, [computeAndSyncState, launchConfig, snapshot.phase]);
@@ -582,6 +680,10 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
     isActiveRef.current = false;
     isRunningRef.current = false;
     setDrawerExpanded(false);
+    clearLockScreenMediaSession();
+    void clearLockScreenTimerNotification();
+    stopSilentBackgroundAudio();
+    stopBackgroundWorkerClock();
     setSnapshot((prev) => ({
       ...prev,
       isActive: false,
@@ -595,6 +697,10 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
     isActiveRef.current = false;
     isRunningRef.current = false;
     setDrawerExpanded(false);
+    clearLockScreenMediaSession();
+    void clearLockScreenTimerNotification();
+    stopSilentBackgroundAudio();
+    stopBackgroundWorkerClock();
     setSnapshot((prev) => ({
       ...prev,
       isActive: false,
@@ -643,6 +749,12 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
     }
   }, [computeAndSyncState, stopTimer]);
 
+  useEffect(() => {
+    actionsRef.current.togglePlay = togglePauseResume;
+    actionsRef.current.skip = skipCurrentPhase;
+    actionsRef.current.addSec = adjustCurrentPhaseSeconds;
+  }, [togglePauseResume, skipCurrentPhase, adjustCurrentPhaseSeconds]);
+
   const resetTimer = useCallback(() => {
     if (!configRef.current) return;
     launchConfig(configRef.current);
@@ -663,6 +775,8 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
       cancelTimer,
       resetTimer,
       registerTimerConclusionHandler,
+      notificationPermission,
+      requestNotificationPermission: handleRequestPermission,
     }),
     [
       snapshot,
@@ -679,6 +793,8 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
       cancelTimer,
       resetTimer,
       registerTimerConclusionHandler,
+      notificationPermission,
+      handleRequestPermission,
     ]
   );
 

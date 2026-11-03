@@ -51,6 +51,8 @@ export function TimerProView() {
     stopTimer,
     cancelTimer,
     resetTimer,
+    notificationPermission,
+    requestNotificationPermission,
   } = useTimerEngine();
 
   const [labTab, setLabTab] = useState<TimerKind>('rest');
@@ -173,6 +175,30 @@ export function TimerProView() {
 
         <SoundSettingsButton />
       </div>
+
+      {/* Lock Screen Notification & Background Audio Permission Banner */}
+      {notificationPermission === 'default' && (
+        <button
+          type="button"
+          onClick={() => void requestNotificationPermission()}
+          className="w-full flex items-center justify-between rounded-2xl border border-gothic/40 bg-gothic/10 px-3.5 py-2.5 text-xs text-brand hover:bg-gothic/15 transition-colors animate-fade-up"
+        >
+          <div className="flex items-center gap-2.5 text-left">
+            <span className="text-base">🔔</span>
+            <div>
+              <p className="font-semibold text-gothic text-[11px]">
+                Activar avisos en Pantalla de Bloqueo
+              </p>
+              <p className="text-[10px] text-brand-muted">
+                Controla el timer y recibe avisos sonoros urgentes al bloquear la pantalla
+              </p>
+            </div>
+          </div>
+          <span className="rounded-lg bg-gothic px-2.5 py-1 text-[10px] font-bold text-background uppercase tracking-wider shrink-0">
+            Activar
+          </span>
+        </button>
+      )}
 
       {/* Mode Switcher */}
       <div className="grid grid-cols-3 gap-1 rounded-2xl border border-stoneborder bg-surface p-1">

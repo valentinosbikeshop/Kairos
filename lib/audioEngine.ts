@@ -71,6 +71,24 @@ class KairosAudioEngine {
     }
   }
 
+  /**
+   * iOS: 'playback' permite que el sonido continúe sonando con la pantalla bloqueada
+   * e ignora el interruptor de silencio (Ringer switch) mientras corre un temporizador.
+   */
+  public configurePlaybackSession(): void {
+    if (typeof navigator === 'undefined') return;
+    if ('audioSession' in navigator) {
+      try {
+        const nav = navigator as NavigatorWithAudioSession;
+        if (nav.audioSession && nav.audioSession.type !== 'playback') {
+          nav.audioSession.type = 'playback';
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  }
+
   private pulseTransientAudioSession(durationMs: number): void {
     if (typeof navigator === 'undefined' || !('audioSession' in navigator)) return;
     try {
@@ -348,10 +366,12 @@ class KairosAudioEngine {
   public setKeepAlive(active: boolean): void {
     this.keepAliveWanted = active;
     if (active) {
+      this.configurePlaybackSession();
       this.unlock();
       this.startKeepAliveSource();
     } else {
       this.stopKeepAliveSource();
+      this.configureAmbientSession();
     }
   }
 

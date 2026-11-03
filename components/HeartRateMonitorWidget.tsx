@@ -602,31 +602,32 @@ export function HeartRateMonitorWidget({
                   <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
                     <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">1</span>
-                      En Relojes Huawei Watch GT / Watch Fit
+                      En tu Huawei Smart Band (En vivo en pantalla)
                     </span>
                     <p className="text-[11px] text-brand-muted">
-                      En la pantalla de tu reloj, ve a <strong>Ajustes ⚙️</strong> → <strong>Bluetooth</strong> → Activa la opción <strong>"Emisión de frecuencia cardíaca"</strong> (Transmitir FC).<br />
-                      <em>Opcional:</em> Al iniciar cualquier sesión de entrenamiento en el reloj, desliza hacia abajo y activa "Emitir frecuencia cardíaca".
+                      En la pantalla táctil de la pulsera, desliza y entra en <strong>Ajustes ⚙️</strong> → <strong>Frecuencia Cardíaca</strong> (o <strong>Bluetooth / Sensores</strong>) → Activa <strong>"Transmitir frecuencia cardíaca"</strong> (Broadcast HR).<br />
+                      <em>Alternativa:</em> Al iniciar cualquier sesión de ejercicio en la pulsera, desliza hasta la rueda de ajustes del entrenamiento y activa <strong>"Emitir FC"</strong>.
                     </p>
                   </div>
 
                   <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
                     <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">2</span>
-                      En Pulseras Huawei Band (Modelos sencillos)
+                      En la App "Salud de Huawei" (En tu Teléfono)
                     </span>
                     <p className="text-[11px] text-brand-muted">
-                      Si tu pulsera no tiene el menú de emisión en pantalla, abre la app <strong>Salud de Huawei</strong> en tu teléfono y vincúlala con <strong>Google Health Connect</strong> o instala la app gratuita <strong>Health Sync</strong> para enviar tus datos en vivo a KAIROS.
+                      Abre la app <strong>Salud de Huawei</strong> → ve a la pestaña <strong>"Yo"</strong> (abajo a la derecha) → entra en <strong>Gestión de privacidad / Servicios de terceros</strong> → Activa la sincronización con <strong>Google Health Connect</strong> (en Android) o <strong>Salud de Apple</strong> (en iPhone).<br />
+                      <em>En Android:</em> Si tu versión de Huawei Health no enlaza directo, instala la app gratuita <strong>Health Sync</strong> para puentear los datos de Salud de Huawei en tiempo real.
                     </p>
                   </div>
 
                   <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
                     <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">3</span>
-                      Toca "Vincular Reloj" en KAIROS
+                      Conectar en KAIROS
                     </span>
                     <p className="text-[11px] text-brand-muted">
-                      Selecciona tu reloj Huawei (o si no aparece directamente, usa la opción <em>"Búsqueda Ampliada"</em>).
+                      Vuelve a KAIROS, pulsa <strong>"Vincular Reloj"</strong> (o <em>"Búsqueda Ampliada"</em> si tu modelo usa nombre personalizado) y selecciona tu pulsera Huawei. Empezará a medir tus pulsaciones y gasto calórico al instante.
                     </p>
                   </div>
                 </div>

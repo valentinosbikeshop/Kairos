@@ -26,6 +26,10 @@ import {
   Watch,
   Smartphone,
   Sparkles,
+  ChevronRight,
+  HelpCircle,
+  Radio,
+  ExternalLink,
 } from 'lucide-react';
 
 interface HeartRateMonitorWidgetProps {
@@ -33,6 +37,8 @@ interface HeartRateMonitorWidgetProps {
   onBpmChange?: (bpm: number, zone: CardioZone) => void;
   onCaloriesUpdate?: (calories: number) => void;
 }
+
+type BrandTab = 'xiaomi' | 'huawei' | 'apple' | 'garmin' | 'samsung' | 'browser';
 
 export function HeartRateMonitorWidget({
   compact = false,
@@ -56,6 +62,7 @@ export function HeartRateMonitorWidget({
   const [deviceName, setDeviceName] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [bleError, setBleError] = useState<string | null>(null);
+  const [scanMode, setScanMode] = useState<'standard' | 'extended'>('standard');
 
   // Live heart rate metrics
   const [bpm, setBpm] = useState<number>(128); // Initial active baseline
@@ -66,9 +73,35 @@ export function HeartRateMonitorWidget({
   const [accumulatedCalories, setAccumulatedCalories] = useState<number>(0);
   const [activeSeconds, setActiveSeconds] = useState<number>(0);
   const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
+  const [activeGuideTab, setActiveGuideTab] = useState<BrandTab>('xiaomi');
 
   const bluetoothDeviceRef = useRef<any>(null);
   const gattServerRef = useRef<any>(null);
+
+  // Brand detection based on device name
+  const detectedBrand = useMemo(() => {
+    if (!deviceName) return null;
+    const lower = deviceName.toLowerCase();
+    if (lower.includes('xiaomi') || lower.includes('mi ') || lower.includes('redmi') || lower.includes('smart band')) {
+      return 'Xiaomi / Redmi';
+    }
+    if (lower.includes('huawei') || lower.includes('honor') || lower.includes('watch gt') || lower.includes('fit')) {
+      return 'Huawei';
+    }
+    if (lower.includes('apple') || lower.includes('heartcast') || lower.includes('echo')) {
+      return 'Apple Watch';
+    }
+    if (lower.includes('garmin')) {
+      return 'Garmin';
+    }
+    if (lower.includes('polar')) {
+      return 'Polar';
+    }
+    if (lower.includes('galaxy') || lower.includes('samsung')) {
+      return 'Samsung Galaxy';
+    }
+    return 'Pulsómetro BLE';
+  }, [deviceName]);
 
   // Active zone based on current BPM
   const activeZone = useMemo(() => {
@@ -100,7 +133,6 @@ export function HeartRateMonitorWidget({
 
   // Real-time calorie accumulation ticker (every 1 second)
   useEffect(() => {
-    // Only accumulate calories if connected or simulating or active
     if (!deviceConnected && !isSimulating) return;
 
     const interval = setInterval(() => {
@@ -121,35 +153,77 @@ export function HeartRateMonitorWidget({
     }
   }, [isSimulating, simulationBpm]);
 
-  // Web Bluetooth API Heart Rate Service (0x180D)
-  const connectBluetoothHeartRate = async () => {
+  // Web Bluetooth API Heart Rate Service with Multi-Brand Compatibility
+  const connectBluetoothHeartRate = async (forceExtended = false) => {
     setBleError(null);
 
     if (typeof window === 'undefined' || !(navigator as any).bluetooth) {
       setBleError(
-        'Web Bluetooth no está habilitado directamente en este navegador. Puedes activar el Modo Simulación para probar tus zonas o usar un navegador compatible (Chrome / Edge / Bluefy en iOS).'
+        'Web Bluetooth no está habilitado directamente en este navegador. En Android usa Chrome o Edge. En iPhone (iOS) usa la app gratuita Bluefy o activa el Modo Simulación.'
       );
       return;
     }
 
     try {
       setIsConnecting(true);
-      const device = await (navigator as any).bluetooth.requestDevice({
-        filters: [{ services: ['heart_rate'] }],
-        optionalServices: ['battery_service'],
-      });
+
+      const standardOptions = {
+        filters: [
+          { services: ['heart_rate'] },
+          { namePrefix: 'Mi ' },
+          { namePrefix: 'Xiaomi' },
+          { namePrefix: 'Redmi' },
+          { namePrefix: 'HUAWEI' },
+          { namePrefix: 'HONOR' },
+          { namePrefix: 'Band' },
+          { namePrefix: 'Watch' },
+          { namePrefix: 'Polar' },
+          { namePrefix: 'Garmin' },
+          { namePrefix: 'Heart' },
+          { namePrefix: 'Echo' },
+        ],
+        optionalServices: [
+          'heart_rate',
+          'battery_service',
+          'device_information',
+          0x180d,
+          '0000180d-0000-1000-8000-00805f9b34fb',
+        ],
+      };
+
+      const extendedOptions = {
+        acceptAllDevices: true,
+        optionalServices: [
+          'heart_rate',
+          'battery_service',
+          'device_information',
+          0x180d,
+          '0000180d-0000-1000-8000-00805f9b34fb',
+        ],
+      };
+
+      const scanConfig = forceExtended || scanMode === 'extended' ? extendedOptions : standardOptions;
+
+      const device = await (navigator as any).bluetooth.requestDevice(scanConfig);
 
       bluetoothDeviceRef.current = device;
-      setDeviceName(device.name || 'Pulsómetro BLE');
+      setDeviceName(device.name || 'Pulsómetro Inteligente');
 
       device.addEventListener('gattserverdisconnected', onDisconnected);
 
       const server = await device.gatt.connect();
       gattServerRef.current = server;
 
-      const service = await server.getPrimaryService('heart_rate');
-      const characteristic = await service.getCharacteristic('heart_rate_measurement');
+      // Intentar obtener servicio de pulso primario estándar
+      let service;
+      try {
+        service = await server.getPrimaryService('heart_rate');
+      } catch {
+        // Respaldo por UUID canónico de 128 bits
+        service = await server.getPrimaryService('0000180d-0000-1000-8000-00805f9b34fb');
+      }
 
+      const characteristic = await service.getCharacteristic('heart_rate_measurement');
       await characteristic.startNotifications();
       characteristic.addEventListener(
         'characteristicvaluechanged',
@@ -162,10 +236,12 @@ export function HeartRateMonitorWidget({
     } catch (err: any) {
       setIsConnecting(false);
       if (err.name === 'NotFoundError') {
-        // User cancelled picker
+        // Cancelado por el usuario
         return;
       }
-      setBleError(err?.message || 'Error al conectar el pulsómetro Bluetooth.');
+      setBleError(
+        `${err?.message || 'Error al conectar el pulsómetro'}. Tip: Verifica haber activado "Compartir FC" o "Transmitir FC" en tu reloj/app.`
+      );
     }
   };
 
@@ -211,11 +287,18 @@ export function HeartRateMonitorWidget({
             />
           </div>
           <div>
-            <h2 className="font-gothic text-xs font-semibold uppercase tracking-wider text-brand">
-              Telemetría Cardíaca Live
-            </h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="font-gothic text-xs font-semibold uppercase tracking-wider text-brand">
+                Telemetría Cardíaca Live
+              </h2>
+              {detectedBrand && (
+                <span className="rounded bg-gothic/20 px-1 py-0.2 text-[9px] font-semibold text-gothic uppercase">
+                  {detectedBrand}
+                </span>
+              )}
+            </div>
             <p className="text-[10px] text-brand-muted">
-              Fórmula Tanaka ({zonesProfile.maxHeartRate} bpm máx) · Ecuación Keytel
+              Tanaka ({zonesProfile.maxHeartRate} bpm máx) · Ecuación Keytel
             </p>
           </div>
         </div>
@@ -224,10 +307,11 @@ export function HeartRateMonitorWidget({
           <button
             type="button"
             onClick={() => setShowGuideModal(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-stoneborder bg-background text-brand-muted hover:text-brand transition-colors"
-            title="Guía de conexión Apple Watch / AirPods"
+            className="flex items-center gap-1 rounded-lg border border-stoneborder bg-background px-2 py-1 text-[11px] text-brand-muted hover:text-brand transition-colors"
+            title="¿Cómo conectar mi Xiaomi, Huawei o Apple Watch?"
           >
-            <Info className="h-3.5 w-3.5" />
+            <HelpCircle className="h-3.5 w-3.5 text-gothic" />
+            <span className="hidden sm:inline">¿Cómo conectar?</span>
           </button>
 
           {deviceConnected ? (
@@ -242,16 +326,16 @@ export function HeartRateMonitorWidget({
           ) : (
             <button
               type="button"
-              onClick={connectBluetoothHeartRate}
+              onClick={() => connectBluetoothHeartRate(false)}
               disabled={isConnecting}
-              className="flex items-center gap-1 rounded-lg border border-stoneborder bg-background px-2.5 py-1 text-[11px] font-medium text-brand hover:border-gothic/50 active:scale-95 transition-all"
+              className="flex items-center gap-1 rounded-lg border border-stoneborder bg-background px-2.5 py-1 text-[11px] font-medium text-brand hover:border-gothic/50 active:scale-95 transition-all shadow-sm"
             >
               {isConnecting ? (
                 <RefreshCw className="h-3 w-3 animate-spin text-gothic" />
               ) : (
                 <Bluetooth className="h-3 w-3 text-sky-400" />
               )}
-              <span>{isConnecting ? 'Buscando...' : 'Vincular BLE'}</span>
+              <span>{isConnecting ? 'Buscando...' : 'Vincular Reloj'}</span>
             </button>
           )}
         </div>
@@ -352,14 +436,30 @@ export function HeartRateMonitorWidget({
         </div>
       </div>
 
-      {/* BLE error banner */}
+      {/* BLE error banner with quick troubleshooting button */}
       {bleError && (
-        <div className="rounded-xl border border-status-regress/40 bg-status-regress/10 p-3 space-y-1 text-xs">
+        <div className="rounded-xl border border-status-regress/40 bg-status-regress/10 p-3 space-y-2 text-xs">
           <div className="flex items-center gap-1.5 text-status-regress font-semibold">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            <span>Nota de compatibilidad BLE</span>
+            <span>Nota de vinculación</span>
           </div>
           <p className="text-[11px] text-brand-muted leading-relaxed">{bleError}</p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => connectBluetoothHeartRate(true)}
+              className="rounded-lg bg-status-regress/20 border border-status-regress/40 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-status-regress/30"
+            >
+              Probar Búsqueda Ampliada (Todos los dispositivos)
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowGuideModal(true)}
+              className="rounded-lg border border-stoneborder bg-background px-2.5 py-1 text-[11px] text-brand-muted hover:text-brand"
+            >
+              Ver instrucciones de mi reloj
+            </button>
+          </div>
         </div>
       )}
 
@@ -377,11 +477,13 @@ export function HeartRateMonitorWidget({
             <Sliders className="h-3 w-3 text-gothic" />
             <span>Modo Simulación / Probar Fases Manualmente</span>
           </span>
-          <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded border ${
-            isSimulating
-              ? 'border-gothic/50 bg-gothic/15 text-gothic font-semibold'
-              : 'border-stoneborder text-brand-muted'
-          }`}>
+          <span
+            className={`font-mono text-[10px] px-1.5 py-0.5 rounded border ${
+              isSimulating
+                ? 'border-gothic/50 bg-gothic/15 text-gothic font-semibold'
+                : 'border-stoneborder text-brand-muted'
+            }`}
+          >
             {isSimulating ? 'Activo' : 'Inactivo'}
           </span>
         </button>
@@ -409,15 +511,16 @@ export function HeartRateMonitorWidget({
         )}
       </div>
 
-      {/* Device Connection Modal Guide */}
+      {/* Interactive Step-by-Step Device Pairing Wizard Modal */}
       {showGuideModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-fade-up">
-          <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-3xl border border-stoneborder bg-surface p-5 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-fade-up">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-stoneborder bg-surface p-5 space-y-4 shadow-2xl">
+            {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-stoneborder/70 pb-3">
               <div className="flex items-center gap-2">
                 <Watch className="h-4 w-4 text-gothic" />
                 <h3 className="font-gothic text-sm font-semibold tracking-wide text-brand">
-                  Conexión con Apple Health & Wearables
+                  Guía Paso a Paso: Vincular tu Reloj
                 </h3>
               </div>
               <button
@@ -429,62 +532,246 @@ export function HeartRateMonitorWidget({
               </button>
             </div>
 
-            <div className="space-y-3.5 text-xs text-brand-muted leading-relaxed">
-              <div className="rounded-2xl border border-stoneborder bg-background p-3 space-y-1.5">
-                <div className="flex items-center gap-2 text-brand font-semibold text-xs">
-                  <Watch className="h-4 w-4 text-rose-400" />
-                  <span>Apple Watch (Transmisión en Vivo)</span>
-                </div>
-                <p className="text-[11px]">
-                  Debido a la privacidad de iOS, Safari no expone Apple HealthKit directamente a páginas web sin intermediario.
-                </p>
-                <p className="text-[11px] text-brand">
-                  <strong>Método en Tiempo Real (Recomendado):</strong> Instala la app gratuita{' '}
-                  <span className="text-gothic font-medium">HeartCast</span> o{' '}
-                  <span className="text-gothic font-medium">Echo Heart Rate</span> en tu Apple Watch o iPhone. Estas aplicaciones emiten tu pulso como un sensor Bluetooth BLE estándar (GATT 0x180D), permitiendo a KAIROS recibir tus pulsaciones segundo a segundo.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-stoneborder bg-background p-3 space-y-1.5">
-                <div className="flex items-center gap-2 text-brand font-semibold text-xs">
-                  <Smartphone className="h-4 w-4 text-sky-400" />
-                  <span>AirPods Pro & Auriculares con Pulsómetro</span>
-                </div>
-                <p className="text-[11px]">
-                  Los auriculares deportivos y modelos de AirPods / Beats (como Powerbeats Pro 2) con sensor óptico de frecuencia cardíaca transmiten por el perfil oficial Bluetooth Heart Rate. Pulsa <strong>Vincular BLE</strong> para detectarlos de inmediato.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-stoneborder bg-background p-3 space-y-1.5">
-                <div className="flex items-center gap-2 text-brand font-semibold text-xs">
-                  <Activity className="h-4 w-4 text-emerald-400" />
-                  <span>Garmin / Polar / Wahoo / Whoop / Coros</span>
-                </div>
-                <p className="text-[11px]">
-                  • <strong>Garmin:</strong> Ve a Menú → Sensores → <em>Emitir frecuencia cardíaca (Broadcast HR)</em>.<br />
-                  • <strong>Polar / Wahoo / Coros:</strong> Activa el modo de transmisión BLE o sincroniza tu banda pectoral (Polar H10/Verity Sense) directamente con KAIROS con 1 toque.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-stoneborder bg-background p-3 space-y-1.5">
-                <div className="flex items-center gap-2 text-brand font-semibold text-xs">
-                  <Flame className="h-4 w-4 text-amber-400" />
-                  <span>Cálculo Científico Personalizado</span>
-                </div>
-                <p className="text-[11px]">
-                  • <strong>Zonas Tanaka:</strong> Basadas en tu edad actual calculada desde tu fecha de nacimiento (HRmax = 208 - 0.7 × edad).<br />
-                  • <strong>Calorías Keytel:</strong> Estimadas en tiempo real mediante la ecuación del <em>Journal of Sports Sciences</em> combinando sexo biológico, peso corporal ({weightKg} kg), edad ({age} años) y pulso activo.
-                </p>
-              </div>
+            {/* Brand Switcher Tabs */}
+            <div className="grid grid-cols-3 gap-1 rounded-2xl border border-stoneborder bg-background p-1 text-[11px]">
+              {(
+                [
+                  { id: 'xiaomi', label: 'Xiaomi / Redmi' },
+                  { id: 'huawei', label: 'Huawei / Honor' },
+                  { id: 'apple', label: 'Apple Watch' },
+                  { id: 'garmin', label: 'Garmin / Polar' },
+                  { id: 'samsung', label: 'Galaxy Watch' },
+                  { id: 'browser', label: 'Navegadores' },
+                ] as { id: BrandTab; label: string }[]
+              ).map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveGuideTab(id)}
+                  className={`rounded-xl py-2 px-1 text-center font-medium transition-colors ${
+                    activeGuideTab === id
+                      ? 'bg-elevated text-brand border border-stoneborder shadow-sm font-semibold'
+                      : 'text-brand-muted hover:text-brand'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowGuideModal(false)}
-              className="w-full rounded-xl bg-brand py-2.5 text-xs font-bold text-background uppercase tracking-wider"
-            >
-              Entendido
-            </button>
+            {/* Brand Instructions Content */}
+            <div className="space-y-3 text-xs leading-relaxed">
+              {/* XIAOMI & REDMI */}
+              {activeGuideTab === 'xiaomi' && (
+                <div className="space-y-3 animate-fade-up">
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">1</span>
+                      Abre la aplicación Mi Fitness o Zepp Life
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      En tu teléfono, abre la app oficial donde tienes emparejada tu pulsera Xiaomi Smart Band (6, 7, 8 o 9) o reloj Redmi Watch.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">2</span>
+                      Activa "Compartir frecuencia cardíaca"
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Ve a la pestaña <strong>Dispositivo</strong> (icono de pulsera abajo) → busca la opción <strong>"Compartir frecuencia cardíaca con otros dispositivos"</strong> (o <em>"Transmitir FC"</em>) y ponla en <strong>Activado</strong>.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">3</span>
+                      Conecta en KAIROS
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Regresa a KAIROS, pulsa el botón <strong>"Vincular Reloj"</strong> y selecciona tu pulsera Xiaomi en la lista emergente. Tus pulsaciones aparecerán en tiempo real.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* HUAWEI & HONOR */}
+              {activeGuideTab === 'huawei' && (
+                <div className="space-y-3 animate-fade-up">
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">1</span>
+                      En Relojes Huawei Watch GT / Watch Fit
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      En la pantalla de tu reloj, ve a <strong>Ajustes ⚙️</strong> → <strong>Bluetooth</strong> → Activa la opción <strong>"Emisión de frecuencia cardíaca"</strong> (Transmitir FC).<br />
+                      <em>Opcional:</em> Al iniciar cualquier sesión de entrenamiento en el reloj, desliza hacia abajo y activa "Emitir frecuencia cardíaca".
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">2</span>
+                      En Pulseras Huawei Band (Modelos sencillos)
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Si tu pulsera no tiene el menú de emisión en pantalla, abre la app <strong>Salud de Huawei</strong> en tu teléfono y vincúlala con <strong>Google Health Connect</strong> o instala la app gratuita <strong>Health Sync</strong> para enviar tus datos en vivo a KAIROS.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">3</span>
+                      Toca "Vincular Reloj" en KAIROS
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Selecciona tu reloj Huawei (o si no aparece directamente, usa la opción <em>"Búsqueda Ampliada"</em>).
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* APPLE WATCH */}
+              {activeGuideTab === 'apple' && (
+                <div className="space-y-3 animate-fade-up">
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">1</span>
+                      ¿Por qué el Apple Watch necesita este paso?
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Apple bloquea el acceso de páginas web a Apple Health por privacidad. Para transmitir tus pulsaciones segundo a segundo a cualquier navegador, se utiliza un puente BLE estándar.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">2</span>
+                      Instala la app gratuita HeartCast o Echo
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      En tu iPhone / Apple Watch, instala <strong>HeartCast</strong> (o <strong>Echo Heart Rate</strong>) desde la App Store. Abre la app en el Apple Watch y dale a <strong>"Start"</strong>. El reloj empezará a emitir tu pulso por Bluetooth.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">3</span>
+                      Toca "Vincular Reloj" en KAIROS
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      KAIROS detectará la señal Bluetooth de tu Apple Watch de inmediato.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* GARMIN & POLAR */}
+              {activeGuideTab === 'garmin' && (
+                <div className="space-y-3 animate-fade-up">
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">1</span>
+                      En Relojes Garmin (Forerunner / Fenix / Venu)
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Mantén presionado el botón de menú central → ve a <strong>Ajustes</strong> → <strong>Sensores y Accesorios</strong> → <strong>Frecuencia Cardíaca en Muñeca</strong> → Selecciona <strong>"Transmitir FC" (Broadcast HR)</strong>.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">2</span>
+                      Bandas Pectorales (Polar H10, HRM-Pro, Wahoo)
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Las bandas de pecho se activan solas en cuanto te las colocas sobre el torso humedecido. No requieren configuración previa.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">3</span>
+                      Toca "Vincular Reloj" en KAIROS
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Aparecerá en la lista al instante y se conectará con 1 solo toque.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* SAMSUNG GALAXY WATCH */}
+              {activeGuideTab === 'samsung' && (
+                <div className="space-y-3 animate-fade-up">
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">1</span>
+                      Galaxy Watch 4, 5, 6, 7 (Wear OS)
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Abre Google Play Store en tu reloj e instala la aplicación gratuita <strong>Heart Rate to Bluetooth</strong> o <strong>HR Transmitter</strong>.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">2</span>
+                      Inicia la transmisión y vincula en KAIROS
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Pulsa "Start Broadcast" en tu reloj y luego toca <strong>"Vincular Reloj"</strong> en KAIROS.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* NAVEGADORES: ANDROID VS IPHONE */}
+              {activeGuideTab === 'browser' && (
+                <div className="space-y-3 animate-fade-up">
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5 text-emerald-400">
+                      ✓ Teléfonos Android (Samsung, Xiaomi, Huawei, Motorola)
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Soporte <strong>100% nativo de fábrica</strong>. Solo abre KAIROS en <strong>Google Chrome, Microsoft Edge, Brave o Samsung Internet</strong> y pulsa "Vincular Reloj". No requiere ninguna app adicional en el teléfono.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5 text-amber-400">
+                      ⚠ Teléfonos iPhone (iOS)
+                    </span>
+                    <p className="text-[11px] text-brand-muted">
+                      Safari en iOS desactiva la conexión Bluetooth web por directiva de Apple.<br />
+                      <strong>Solución:</strong> En iPhone, abre KAIROS desde la app gratuita <strong>Bluefy</strong> (navegador oficial WebBLE del App Store). ¡Con Bluefy funciona el Bluetooth con cualquier reloj en iPhone!
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stoneborder/70">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGuideModal(false);
+                  connectBluetoothHeartRate(true);
+                }}
+                className="rounded-xl border border-stoneborder bg-background py-2.5 text-xs font-semibold text-brand hover:border-gothic/60"
+              >
+                Escanear Dispositivos
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowGuideModal(false)}
+                className="rounded-xl bg-brand py-2.5 text-xs font-bold text-background uppercase tracking-wider"
+              >
+                Entendido
+              </button>
+            </div>
           </div>
         </div>
       )}

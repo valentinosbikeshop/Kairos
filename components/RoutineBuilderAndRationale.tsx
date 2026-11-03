@@ -16,7 +16,7 @@ import {
   ORDERED_WEEKDAYS,
 } from '@/lib/aiRoutineEngine';
 import { BUILTIN_EXERCISES, smartSearchExercises } from '@/lib/exerciseDatabase';
-import { MODE_META, toLocalDateKey, uid } from '@/lib/formatters';
+import { getResolvedWorkoutDefaults, MODE_META, toLocalDateKey, uid } from '@/lib/formatters';
 import {
   ArrowDown,
   ArrowUp,
@@ -1310,15 +1310,21 @@ export function RoutineSetupConfigurator({
                             type="button"
                             onClick={() => {
                               const cleanCustom = exSearch.trim();
+                              const defs = getResolvedWorkoutDefaults(profile);
+                              const hasCustomRest = Boolean(
+                                profile?.workoutDefaults?.defaultRestSeconds
+                              );
                               const customPres: RoutineExercisePrescription = {
                                 catalogId: `custom_${uid('cx')}`,
                                 name: cleanCustom,
                                 mode: day.primaryMode,
-                                sets: 3,
-                                repsNum: 10,
-                                repRangeLabel: '10 reps',
-                                rir: '2',
-                                restSeconds: MODE_META[day.primaryMode].defaultRest,
+                                sets: defs.defaultEffectiveSets,
+                                repsNum: defs.defaultReps,
+                                repRangeLabel: `${defs.defaultReps} reps`,
+                                rir: defs.defaultRir,
+                                restSeconds: hasCustomRest
+                                  ? defs.defaultRestSeconds
+                                  : MODE_META[day.primaryMode].defaultRest,
                               };
                               setActiveManualList((prev) =>
                                 prev.map((d) =>
@@ -1339,15 +1345,21 @@ export function RoutineSetupConfigurator({
                         )}
 
                         {matchedExercises.map(({ item }) => {
+                          const defs = getResolvedWorkoutDefaults(profile);
+                          const hasCustomRest = Boolean(
+                            profile?.workoutDefaults?.defaultRestSeconds
+                          );
                           const newPres: RoutineExercisePrescription = {
                             catalogId: item.id,
                             name: item.name,
                             mode: item.mode,
-                            sets: 3,
-                            repsNum: 10,
-                            repRangeLabel: '10 reps',
-                            rir: '2',
-                            restSeconds: item.defaultRestSeconds,
+                            sets: defs.defaultEffectiveSets,
+                            repsNum: defs.defaultReps,
+                            repRangeLabel: `${defs.defaultReps} reps`,
+                            rir: defs.defaultRir,
+                            restSeconds: hasCustomRest
+                              ? defs.defaultRestSeconds
+                              : item.defaultRestSeconds,
                           };
                           return (
                             <button

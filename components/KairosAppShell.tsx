@@ -15,6 +15,12 @@ import { ScienceLibraryView } from '@/components/ScienceLibraryView';
 import { AnalyticsView } from '@/components/AnalyticsView';
 import { HistoryView } from '@/components/HistoryView';
 import { ImpactReportModal } from '@/components/ImpactReportModal';
+import {
+  HeartRateTelemetryProvider,
+  FloatingHeartRateHUD,
+  useHeartRateTelemetry,
+} from '@/components/HeartRateMonitorWidget';
+import { AppUpdateBanner } from '@/components/AppUpdateManager';
 import { AppTab } from '@/types/kairos';
 import { Activity, BookOpen, CalendarClock, Dumbbell, Timer } from 'lucide-react';
 
@@ -36,6 +42,7 @@ function KairosInnerWorkspace() {
   } = useKairos();
 
   const { snapshot } = useTimerEngine();
+  const { deviceConnected, isSimulating } = useHeartRateTelemetry();
 
   // Reset scroll to top on tab change so header is never cut off
   React.useEffect(() => {
@@ -51,7 +58,7 @@ function KairosInnerWorkspace() {
     dot?: boolean;
   }[] = [
     { id: 'workout', label: 'Entrenar', icon: Dumbbell },
-    { id: 'timer', label: 'Timer', icon: Timer, dot: snapshot.isActive },
+    { id: 'timer', label: 'Timer', icon: Timer, dot: snapshot.isActive || deviceConnected || isSimulating },
     { id: 'science', label: 'Ciencia', icon: BookOpen },
     { id: 'analytics', label: 'Análisis', icon: Activity },
     { id: 'history', label: 'Historial', icon: CalendarClock },
@@ -61,6 +68,7 @@ function KairosInnerWorkspace() {
     <div className="min-h-[100dvh] w-full bg-[#09080B] flex justify-center">
       {/* Centered iPhone Chassis */}
       <div className="relative flex min-h-[100dvh] w-full max-w-[430px] flex-col bg-background text-brand sm:border-x sm:border-stoneborder sm:shadow-[0_0_80px_rgba(0,0,0,0.85)]">
+        <AppUpdateBanner />
         {!hydrated ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 gothic-sanctuary-bg">
             <span className="text-xs text-gothic">❖</span>
@@ -78,6 +86,7 @@ function KairosInnerWorkspace() {
               {activeTab === 'history' && <HistoryView />}
             </main>
 
+            <FloatingHeartRateHUD />
             {activeTab !== 'timer' && <FloatingWorkoutTimerHUD />}
 
             <ImpactReportModal
@@ -150,7 +159,9 @@ export function KairosAppShell() {
   return (
     <TimerEngineProvider>
       <KairosProvider>
-        <KairosInnerWorkspace />
+        <HeartRateTelemetryProvider>
+          <KairosInnerWorkspace />
+        </HeartRateTelemetryProvider>
       </KairosProvider>
     </TimerEngineProvider>
   );

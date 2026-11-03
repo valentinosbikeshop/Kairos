@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useKairos } from '@/lib/kairosContext';
-import { kairosAudio, SOUND_PROFILE_META } from '@/lib/audioEngine';
+import { kairosAudio, KairosAudioHealth, SOUND_PROFILE_META } from '@/lib/audioEngine';
 import { SoundProfile } from '@/types/kairos';
 import { Bell, Check, Minus, Plus, Radio, Volume2, VolumeX, X, Zap } from 'lucide-react';
 
@@ -38,7 +38,7 @@ export function SoundSettingsButton() {
       <button
         type="button"
         onClick={() => {
-          kairosAudio.unlock();
+          kairosAudio.unlock(true);
           setOpen(true);
         }}
         aria-label="Configurar volumen y tonos"
@@ -100,10 +100,15 @@ export function AudioMixerPanel() {
     audioSettings.gainPercent > 0 ? audioSettings.gainPercent : 115
   );
   const [testingSound, setTestingSound] = useState(false);
+  const [audioHealth, setAudioHealth] = useState<KairosAudioHealth>('locked');
+
+  useEffect(() => {
+    return kairosAudio.subscribeHealth(setAudioHealth);
+  }, []);
 
   const setGain = (nextVal: number) => {
     const clamped = Math.max(0, Math.min(200, Math.round(nextVal / 5) * 5));
-    kairosAudio.unlock();
+    kairosAudio.unlock(true);
     if (clamped > 0) {
       setLastSavedGain(clamped);
     }
@@ -111,7 +116,7 @@ export function AudioMixerPanel() {
   };
 
   const handleProfileSelect = (profile: SoundProfile) => {
-    kairosAudio.unlock();
+    kairosAudio.unlock(true);
     const restoredGain = audioSettings.gainPercent === 0 ? lastSavedGain : audioSettings.gainPercent;
     updateAudioSettings({ profile, gainPercent: restoredGain });
     setTimeout(() => {
@@ -120,7 +125,7 @@ export function AudioMixerPanel() {
   };
 
   const handlePreviewTone = () => {
-    kairosAudio.unlock();
+    kairosAudio.unlock(true);
     if (audioSettings.gainPercent === 0) {
       updateAudioSettings({ gainPercent: lastSavedGain });
     }
@@ -270,6 +275,37 @@ export function AudioMixerPanel() {
             );
           })}
         </div>
+      </div>
+
+      {/* Estado del Motor de Audio + Compatibilidad Apple Music / Spotify */}
+      <div className="rounded-2xl border border-stoneborder bg-background/75 p-3.5 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                audioHealth === 'running' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
+              }`}
+            />
+            <span className="text-xs font-medium text-brand">
+              {audioHealth === 'running'
+                ? 'Motor de sonido activo (Apple Music / Spotify)'
+                : 'Motor en reposo — toca para activar'}
+            </span>
+          </div>
+          {audioHealth !== 'running' && (
+            <button
+              type="button"
+              onClick={handlePreviewTone}
+              className="rounded-lg bg-gothic/20 border border-gothic/50 px-2.5 py-1 text-[11px] font-semibold text-brand active:scale-95"
+            >
+              Reactivar
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-brand-muted leading-relaxed">
+          KAIROS atenúa ligeramente tu música (ducking) durante 0.3s al sonar cada pitido sin pausar
+          Apple Music. En iPhone, asegúrate de no tener activado el modo Silencio del dispositivo.
+        </p>
       </div>
     </div>
   );

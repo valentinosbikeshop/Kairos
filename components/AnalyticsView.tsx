@@ -4,10 +4,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useKairos } from '@/lib/kairosContext';
 import { computeExecutiveStats } from '@/lib/analyticsEngine';
 import { normalizeSearchText } from '@/lib/exerciseDatabase';
-import { getAgeFromBirthDate, getProfileAge } from '@/lib/formatters';
+import {
+  getAgeFromBirthDate,
+  getProfileAge,
+  getResolvedWorkoutDefaults,
+} from '@/lib/formatters';
+import { RirValue } from '@/types/kairos';
 import { VectorEvolutionChart } from '@/components/VectorEvolutionChart';
-import { calculateCardioZones, CardioZoneNumber } from '@/lib/cardioTelemetry';
-import { Heart, Search, SlidersHorizontal, X } from 'lucide-react';
+import { AppUpdateButton } from '@/components/AppUpdateManager';
+import { Check, Search, SlidersHorizontal, X } from 'lucide-react';
 
 export function AnalyticsView() {
   const { sessions, evaluations, catalog, profile, saveUserProfile } = useKairos();
@@ -15,6 +20,26 @@ export function AnalyticsView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCatalogId, setSelectedCatalogId] = useState<string>('');
   const [editingBody, setEditingBody] = useState(false);
+  const [editingDefaults, setEditingDefaults] = useState(false);
+
+  const resolvedDefaults = useMemo(() => getResolvedWorkoutDefaults(profile), [profile]);
+
+  const [defRestInput, setDefRestInput] = useState<number>(resolvedDefaults.defaultRestSeconds);
+  const [defRepsInput, setDefRepsInput] = useState<number>(resolvedDefaults.defaultReps);
+  const [defEffectiveSetsInput, setDefEffectiveSetsInput] = useState<number>(
+    resolvedDefaults.defaultEffectiveSets
+  );
+  const [defWarmupSetsInput, setDefWarmupSetsInput] = useState<number>(
+    resolvedDefaults.defaultWarmupSets
+  );
+  const [defRirInput, setDefRirInput] = useState<RirValue>(resolvedDefaults.defaultRir);
+  const [defRpeInput, setDefRpeInput] = useState<number>(resolvedDefaults.defaultRpe);
+  const [defIsoSecInput, setDefIsoSecInput] = useState<number>(
+    resolvedDefaults.defaultIsometricSeconds
+  );
+  const [defAutoRestInput, setDefAutoRestInput] = useState<boolean>(
+    resolvedDefaults.autoStartRestTimer
+  );
 
   // Quick body metrics edit state
   const [weightInput, setWeightInput] = useState(
@@ -34,6 +59,15 @@ export function AnalyticsView() {
       setHeightInput(String(profile.heightCm));
       setFatInput(profile.bodyFatPercent !== undefined ? String(profile.bodyFatPercent) : '');
       setBirthDateInput(profile.birthDate ?? '');
+      const d = getResolvedWorkoutDefaults(profile);
+      setDefRestInput(d.defaultRestSeconds);
+      setDefRepsInput(d.defaultReps);
+      setDefEffectiveSetsInput(d.defaultEffectiveSets);
+      setDefWarmupSetsInput(d.defaultWarmupSets);
+      setDefRirInput(d.defaultRir);
+      setDefRpeInput(d.defaultRpe);
+      setDefIsoSecInput(d.defaultIsometricSeconds);
+      setDefAutoRestInput(d.autoStartRestTimer);
     }
   }, [profile]);
 
@@ -52,12 +86,6 @@ export function AnalyticsView() {
         ? Math.round(profile.weightKg * (1 - profile.bodyFatPercent / 100) * 10) / 10
         : null;
     return { bmi, leanMassKg };
-  }, [profile]);
-
-  const userAge = useMemo(() => (profile ? getProfileAge(profile) : 25), [profile]);
-
-  const cardioZonesProfile = useMemo(() => {
-    return profile ? calculateCardioZones(profile, 60) : null;
   }, [profile]);
 
   const searchableIndexByCatalogId = useMemo(() => {
@@ -133,16 +161,38 @@ export function AnalyticsView() {
     setEditingBody(false);
   };
 
+  const handleSaveWorkoutDefaults = async () => {
+    if (!profile) return;
+    await saveUserProfile({
+      ...profile,
+      workoutDefaults: {
+        defaultRestSeconds: Math.max(15, Math.min(600, Math.round(defRestInput || 120))),
+        defaultReps: Math.max(1, Math.min(100, Math.round(defRepsInput || 10))),
+        defaultEffectiveSets: Math.max(1, Math.min(12, Math.round(defEffectiveSetsInput || 3))),
+        defaultWarmupSets: Math.max(0, Math.min(8, Math.round(defWarmupSetsInput || 0))),
+        defaultRir: defRirInput,
+        defaultRpe: Math.max(5, Math.min(10, Math.round((defRpeInput || 8) * 2) / 2)),
+        defaultIsometricSeconds: Math.max(5, Math.min(300, Math.round(defIsoSecInput || 15))),
+        autoStartRestTimer: defAutoRestInput,
+      },
+      updatedAtIso: new Date().toISOString(),
+    });
+    setEditingDefaults(false);
+  };
+
   return (
     <div className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-28 space-y-6">
-      {/* Calm Gothic Title */}
-      <div className="space-y-1">
-        <h1 className="font-gothic text-xl font-semibold tracking-wide text-brand">
-          Tu Evolución Física
-        </h1>
-        <p className="text-xs text-brand-muted">
-          Seguimiento personal adaptado a tu composición corporal.
-        </p>
+      {/* Calm Gothic Title + Direct Update Button */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-1">
+          <h1 className="font-gothic text-xl font-semibold tracking-wide text-brand">
+            Tu Evolución Física
+          </h1>
+          <p className="text-xs text-brand-muted">
+            Seguimiento personal adaptado a tu composición corporal.
+          </p>
+        </div>
+        <AppUpdateButton />
       </div>
 
       {/* ================= PERSONAL BODY COMPOSITION CARD ================= */}
@@ -260,54 +310,213 @@ export function AnalyticsView() {
         </section>
       )}
 
-      {/* ================= ZONAS DE ENTRENAMIENTO & SALUD CARDIOVASCULAR ================= */}
-      {cardioZonesProfile && (
+      {/* ================= PREFERENCIAS DE ENTRENAMIENTO (POR DEFECTO) ================= */}
+      {profile && (
         <section className="rounded-2xl border border-stoneborder bg-surface p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Heart className="h-4 w-4 text-rose-500 fill-rose-500/20" />
-              <h2 className="font-gothic text-xs font-semibold uppercase tracking-widest text-brand">
-                Fases Cardíacas & Salud Metabólica
+            <div>
+              <h2 className="font-gothic text-xs font-semibold uppercase tracking-widest text-gothic">
+                Preferencias de Entrenamiento
               </h2>
+              <p className="text-[11px] text-brand-muted mt-0.5">
+                Valores iniciales al agregar un nuevo ejercicio a tu rutina o entrenamiento del día.
+              </p>
             </div>
-            <span className="font-mono text-xs font-bold text-brand">
-              {cardioZonesProfile.maxHeartRate} BPM máx
-            </span>
+            <button
+              type="button"
+              onClick={() => setEditingDefaults((v) => !v)}
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-brand-muted hover:text-brand"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              <span>{editingDefaults ? 'Cancelar' : 'Personalizar'}</span>
+            </button>
           </div>
 
-          <p className="text-[11px] text-brand-muted leading-relaxed">
-            Frecuencia cardíaca máxima estimada mediante la fórmula de <strong>Tanaka</strong> (208 - 0.7 × edad) y rangos fisiológicos personalizados para tu edad actual ({userAge} años).
-          </p>
-
-          <div className="space-y-2 pt-1">
-            {([1, 2, 3, 4, 5] as CardioZoneNumber[]).map((zNum) => {
-              const zone = cardioZonesProfile.zones[zNum];
-              return (
-                <div
-                  key={zNum}
-                  className="rounded-xl border border-stoneborder/70 bg-background p-2.5 flex items-center justify-between gap-3 text-xs"
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className="inline-block h-2 w-2 rounded-full"
-                        style={{ backgroundColor: zone.accentHex }}
-                      />
-                      <span className="font-medium text-brand">{zone.name}</span>
-                    </div>
-                    <p className="text-[10px] text-brand-muted">{zone.metabolicTarget}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-mono font-semibold text-brand tabular-nums">
-                      {zone.minBpm} - {zone.maxBpm}{' '}
-                      <span className="text-[10px] font-sans text-brand-muted font-normal">bpm</span>
-                    </div>
-                    <span className="text-[10px] font-mono text-brand-muted">{zone.rangePct}</span>
-                  </div>
+          {!editingDefaults ? (
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-0.5">
+              <div className="rounded-xl border border-stoneborder/70 bg-background p-2.5">
+                <span className="block text-[10px] text-brand-muted">Descanso/serie</span>
+                <span className="text-xs font-semibold tabular-nums text-brand">
+                  {resolvedDefaults.defaultRestSeconds}s
+                </span>
+              </div>
+              <div className="rounded-xl border border-stoneborder/70 bg-background p-2.5">
+                <span className="block text-[10px] text-brand-muted">Reps/serie</span>
+                <span className="text-xs font-semibold tabular-nums text-brand">
+                  {resolvedDefaults.defaultReps} reps
+                </span>
+              </div>
+              <div className="rounded-xl border border-stoneborder/70 bg-background p-2.5">
+                <span className="block text-[10px] text-brand-muted">Series efectivas</span>
+                <span className="text-xs font-semibold tabular-nums text-brand">
+                  {resolvedDefaults.defaultEffectiveSets} series
+                </span>
+              </div>
+              <div className="rounded-xl border border-stoneborder/70 bg-background p-2.5">
+                <span className="block text-[10px] text-brand-muted">Calentamiento</span>
+                <span className="text-xs font-semibold tabular-nums text-brand">
+                  {resolvedDefaults.defaultWarmupSets} series
+                </span>
+              </div>
+              <div className="rounded-xl border border-stoneborder/70 bg-background p-2.5">
+                <span className="block text-[10px] text-brand-muted">RIR / RPE</span>
+                <span className="text-xs font-semibold tabular-nums text-brand">
+                  RIR {resolvedDefaults.defaultRir} · @{resolvedDefaults.defaultRpe}
+                </span>
+              </div>
+              <div className="rounded-xl border border-stoneborder/70 bg-background p-2.5">
+                <span className="block text-[10px] text-brand-muted">Auto-Timer</span>
+                <span className="text-xs font-semibold text-brand">
+                  {resolvedDefaults.autoStartRestTimer ? 'Activo' : 'Manual'}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-1 animate-fade-up">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] text-brand-muted mb-1">
+                    Descanso habitual (s)
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={15}
+                    max={600}
+                    step={15}
+                    value={defRestInput}
+                    onChange={(e) => setDefRestInput(parseInt(e.target.value, 10) || 0)}
+                    className="w-full rounded-xl border border-stoneborder bg-background px-2.5 py-1.5 text-[16px] tabular-nums text-brand"
+                  />
                 </div>
-              );
-            })}
-          </div>
+                <div>
+                  <label className="block text-[11px] text-brand-muted mb-1">
+                    Repeticiones por serie
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={100}
+                    value={defRepsInput}
+                    onChange={(e) => setDefRepsInput(parseInt(e.target.value, 10) || 0)}
+                    className="w-full rounded-xl border border-stoneborder bg-background px-2.5 py-1.5 text-[16px] tabular-nums text-brand"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-brand-muted mb-1">
+                    Series efectivas / ej.
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={12}
+                    value={defEffectiveSetsInput}
+                    onChange={(e) => setDefEffectiveSetsInput(parseInt(e.target.value, 10) || 1)}
+                    className="w-full rounded-xl border border-stoneborder bg-background px-2.5 py-1.5 text-[16px] tabular-nums text-brand"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-brand-muted mb-1">
+                    Series calentamiento / ej.
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={8}
+                    value={defWarmupSetsInput}
+                    onChange={(e) =>
+                      setDefWarmupSetsInput(Math.max(0, parseInt(e.target.value, 10) || 0))
+                    }
+                    className="w-full rounded-xl border border-stoneborder bg-background px-2.5 py-1.5 text-[16px] tabular-nums text-brand"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-brand-muted mb-1">
+                    RIR habitual (Hipertrofia)
+                  </label>
+                  <select
+                    value={defRirInput}
+                    onChange={(e) => setDefRirInput(e.target.value as RirValue)}
+                    className="w-full rounded-xl border border-stoneborder bg-background px-2.5 py-1.5 text-[15px] text-brand"
+                  >
+                    {(['0', '1', '2', '3', '4+'] as RirValue[]).map((r) => (
+                      <option key={r} value={r}>
+                        RIR {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-brand-muted mb-1">
+                    Isométricos (s por serie)
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={5}
+                    max={300}
+                    step={5}
+                    value={defIsoSecInput}
+                    onChange={(e) => setDefIsoSecInput(parseInt(e.target.value, 10) || 15)}
+                    className="w-full rounded-xl border border-stoneborder bg-background px-2.5 py-1.5 text-[16px] tabular-nums text-brand"
+                  />
+                </div>
+              </div>
+
+              {/* Quick rest presets */}
+              <div className="flex items-center justify-between gap-2 pt-0.5">
+                <span className="text-[11px] text-brand-muted">Descanso rápido:</span>
+                <div className="flex items-center gap-1.5">
+                  {[60, 90, 120, 150, 180].map((sec) => (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => setDefRestInput(sec)}
+                      className={`rounded-lg border px-2 py-1 text-[11px] tabular-nums ${
+                        defRestInput === sec
+                          ? 'border-gothic bg-gothic/20 text-brand font-semibold'
+                          : 'border-stoneborder bg-background text-brand-muted hover:text-brand'
+                      }`}
+                    >
+                      {sec}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Auto-start rest timer toggle */}
+              <button
+                type="button"
+                onClick={() => setDefAutoRestInput((v) => !v)}
+                className="w-full flex items-center justify-between rounded-xl border border-stoneborder bg-background px-3 py-2 text-xs"
+              >
+                <span className="text-brand-muted">
+                  Iniciar temporizador de descanso al marcar serie (✓)
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold ${
+                    defAutoRestInput
+                      ? 'bg-gothic/20 text-brand border border-gothic/50'
+                      : 'bg-surface text-brand-muted border border-stoneborder'
+                  }`}
+                >
+                  {defAutoRestInput && <Check className="h-3 w-3 text-gothic" />}
+                  {defAutoRestInput ? 'Activado' : 'Desactivado'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveWorkoutDefaults}
+                className="w-full rounded-xl bg-brand py-2 text-xs font-bold uppercase tracking-wider text-background"
+              >
+                Guardar Preferencias Predeterminadas
+              </button>
+            </div>
+          )}
         </section>
       )}
 

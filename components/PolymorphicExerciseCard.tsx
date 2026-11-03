@@ -33,6 +33,7 @@ import {
   calculateRunningPaceSecPerKm,
   calculateSwimPaceSecPer100m,
   formatMmSs,
+  getResolvedWorkoutDefaults,
   parseMmSsInput,
   uid,
 } from '@/lib/formatters';
@@ -124,7 +125,7 @@ function InlineSplitStopwatch({
       type="button"
       title="Cronometrar tramo en vivo"
       onClick={() => {
-        kairosAudio.unlock();
+        kairosAudio.unlock(true);
         setLiveSec(currentSeconds > 0 ? 0 : 0);
         setRunningSinceMs(Date.now());
       }}
@@ -196,8 +197,9 @@ export function PolymorphicExerciseCard({
   blockId,
   exercise,
 }: PolymorphicExerciseCardProps) {
-  const { sessions, mutateExercise, removeExerciseFromBlock } = useKairos();
+  const { sessions, profile, mutateExercise, removeExerciseFromBlock } = useKairos();
   const { startRestTimer, startIsometricTimer } = useTimerEngine();
+  const workoutDefaults = useMemo(() => getResolvedWorkoutDefaults(profile), [profile]);
 
   const ghost = useMemo(
     () => getLastExerciseGhost(sessions, exercise.catalogId, exercise.name),
@@ -207,7 +209,7 @@ export function PolymorphicExerciseCard({
   const triggerCheckAndAutoRest = (nextCompleted: boolean, restSec: number) => {
     if (nextCompleted) {
       kairosAudio.playSetCheckFeedback();
-      if (restSec > 0) {
+      if (restSec > 0 && workoutDefaults.autoStartRestTimer) {
         startRestTimer(restSec, `${exercise.name} (${restSec}s)`);
       }
     }

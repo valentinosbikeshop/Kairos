@@ -1,4 +1,10 @@
-import { CalisthenicsProgression, RirValue, TrainingMode } from '@/types/kairos';
+import {
+  CalisthenicsProgression,
+  RirValue,
+  TrainingMode,
+  UserProfile,
+  UserWorkoutDefaults,
+} from '@/types/kairos';
 
 export const MODE_META: Record<
   TrainingMode,
@@ -237,6 +243,36 @@ export function toLocalDateKey(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
     d.getDate()
   ).padStart(2, '0')}`;
+}
+
+export function getResolvedWorkoutDefaults(
+  profile: UserProfile | null | undefined
+): UserWorkoutDefaults {
+  const custom = profile?.workoutDefaults;
+  return {
+    defaultRestSeconds:
+      custom?.defaultRestSeconds && custom.defaultRestSeconds >= 10
+        ? custom.defaultRestSeconds
+        : 120,
+    defaultReps:
+      custom?.defaultReps && custom.defaultReps >= 1 ? custom.defaultReps : 10,
+    defaultEffectiveSets:
+      custom?.defaultEffectiveSets && custom.defaultEffectiveSets >= 1
+        ? custom.defaultEffectiveSets
+        : 3,
+    defaultWarmupSets:
+      typeof custom?.defaultWarmupSets === 'number' && custom.defaultWarmupSets >= 0
+        ? custom.defaultWarmupSets
+        : 0,
+    defaultRir: custom?.defaultRir ?? '2',
+    defaultRpe:
+      custom?.defaultRpe && custom.defaultRpe >= 5 ? custom.defaultRpe : 8.0,
+    defaultIsometricSeconds:
+      custom?.defaultIsometricSeconds && custom.defaultIsometricSeconds >= 5
+        ? custom.defaultIsometricSeconds
+        : 15,
+    autoStartRestTimer: custom?.autoStartRestTimer !== false,
+  };
 }
 
 export function uid(prefix = 'k'): string {

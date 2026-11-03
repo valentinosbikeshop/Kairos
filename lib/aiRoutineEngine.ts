@@ -13,7 +13,7 @@ import {
   WorkoutSession,
 } from '@/types/kairos';
 import { BUILTIN_EXERCISES, cloneSetsFromGhost, getLastExerciseGhost, normalizeSearchText } from '@/lib/exerciseDatabase';
-import { MODE_META, toLocalDateKey, uid } from '@/lib/formatters';
+import { getResolvedWorkoutDefaults, MODE_META, toLocalDateKey, uid } from '@/lib/formatters';
 
 export const WEEKDAY_NAMES_ES = [
   'Domingo',
@@ -776,6 +776,8 @@ export function buildWorkoutExerciseFromPrescription(
   }
 
   const count = Math.max(1, pres.sets || 3);
+  const defs = getResolvedWorkoutDefaults(profile);
+  const warmupCount = Math.max(0, defs.defaultWarmupSets);
 
   if (pres.mode === 'hypertrophy') {
     const isLower = /squat|hack|leg|rdl|hip_thrust|lunge|sentadilla|prensa|peso muerto/i.test(
@@ -788,17 +790,28 @@ export function buildWorkoutExerciseFromPrescription(
       5,
       Math.round(((isLower ? bw * 0.7 : isIso ? bw * 0.22 : bw * 0.48) * loadScale) / 2.5) * 2.5
     );
+    const warmupKg = Math.max(5, Math.round((startKg * 0.6) / 2.5) * 2.5);
+    const warmupSets = Array.from({ length: warmupCount }, () => ({
+      id: uid('hy'),
+      weightKg: warmupKg,
+      reps: pres.repsNum || defs.defaultReps,
+      rir: '4+' as const,
+      setType: 'Calentamiento' as const,
+      restSeconds: base.defaultRestSeconds,
+      completed: false,
+    }));
+    const effectiveSets = Array.from({ length: count }, () => ({
+      id: uid('hy'),
+      weightKg: startKg,
+      reps: pres.repsNum || defs.defaultReps,
+      rir: pres.rir || defs.defaultRir,
+      setType: 'Efectiva' as const,
+      restSeconds: base.defaultRestSeconds,
+      completed: false,
+    }));
     return {
       ...base,
-      hypertrophySets: Array.from({ length: count }, () => ({
-        id: uid('hy'),
-        weightKg: startKg,
-        reps: pres.repsNum || 10,
-        rir: pres.rir || '2',
-        setType: 'Efectiva' as const,
-        restSeconds: base.defaultRestSeconds,
-        completed: false,
-      })),
+      hypertrophySets: [...warmupSets, ...effectiveSets],
     };
   }
 

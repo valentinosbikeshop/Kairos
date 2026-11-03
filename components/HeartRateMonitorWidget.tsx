@@ -1,7 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from 'react';
 import { useKairos } from '@/lib/kairosContext';
+import { useTimerEngine } from '@/components/TimerEngine';
 import { getProfileAge } from '@/lib/formatters';
 import {
   calculateCardioZones,
@@ -13,23 +22,16 @@ import {
   CardioZonesProfile,
 } from '@/lib/cardioTelemetry';
 import {
-  Activity,
   Flame,
   Heart,
   Bluetooth,
-  Info,
   Sliders,
   X,
-  Check,
   AlertTriangle,
   RefreshCw,
   Watch,
-  Smartphone,
   Sparkles,
-  ChevronRight,
   HelpCircle,
-  Radio,
-  ExternalLink,
 } from 'lucide-react';
 
 interface HeartRateMonitorWidgetProps {
@@ -40,75 +42,91 @@ interface HeartRateMonitorWidgetProps {
 
 type BrandTab = 'xiaomi' | 'huawei' | 'apple' | 'garmin' | 'samsung' | 'browser';
 
-export function HeartRateMonitorWidget({
-  compact = false,
-  onBpmChange,
-  onCaloriesUpdate,
-}: HeartRateMonitorWidgetProps) {
+interface HeartRateTelemetryContextValue {
+  deviceConnected: boolean;
+  deviceName: string | null;
+  detectedBrand: string | null;
+  isConnecting: boolean;
+  bleError: string | null;
+  scanMode: 'standard' | 'extended';
+  setScanMode: (mode: 'standard' | 'extended') => void;
+  bpm: number;
+  isSimulating: boolean;
+  setIsSimulating: React.Dispatch<React.SetStateAction<boolean>>;
+  simulationBpm: number;
+  setSimulationBpm: (val: number) => void;
+  accumulatedCalories: number;
+  activeSeconds: number;
+  zonesProfile: CardioZonesProfile;
+  activeZone: CardioZone;
+  instantKcalPerMin: number;
+  pulseDurationSec: number;
+  connectBluetoothHeartRate: (forceExtended?: boolean) => Promise<void>;
+  disconnectBluetooth: () => void;
+  resetCalories: () => void;
+}
+
+const HeartRateTelemetryContext = createContext<HeartRateTelemetryContextValue | null>(null);
+
+export function HeartRateTelemetryProvider({ children }: { children: React.ReactNode }) {
   const { profile } = useKairos();
 
-  // Somatic profile metrics for personalized calculations
   const age = useMemo(() => (profile ? (getProfileAge(profile) ?? 25) : 25), [profile]);
   const weightKg = useMemo(() => profile?.weightKg ?? 75, [profile]);
   const sex = useMemo(() => profile?.sex ?? 'male', [profile]);
 
-  // Calculate personalized cardiovascular zones profile
   const zonesProfile: CardioZonesProfile = useMemo(() => {
     return calculateCardioZones(profile ? profile : age, 60);
   }, [profile, age]);
 
-  // Telemetry state
   const [deviceConnected, setDeviceConnected] = useState(false);
   const [deviceName, setDeviceName] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [bleError, setBleError] = useState<string | null>(null);
   const [scanMode, setScanMode] = useState<'standard' | 'extended'>('standard');
 
-  // Live heart rate metrics
-  const [bpm, setBpm] = useState<number>(128); // Initial active baseline
+  const [bpm, setBpm] = useState<number>(128);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [simulationBpm, setSimulationBpm] = useState<number>(135);
 
-  // Caloric accumulation
   const [accumulatedCalories, setAccumulatedCalories] = useState<number>(0);
   const [activeSeconds, setActiveSeconds] = useState<number>(0);
-  const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
-  const [activeGuideTab, setActiveGuideTab] = useState<BrandTab>('xiaomi');
 
   const bluetoothDeviceRef = useRef<any>(null);
   const gattServerRef = useRef<any>(null);
 
-  // Brand detection based on device name
   const detectedBrand = useMemo(() => {
     if (!deviceName) return null;
     const lower = deviceName.toLowerCase();
-    if (lower.includes('xiaomi') || lower.includes('mi ') || lower.includes('redmi') || lower.includes('smart band')) {
+    if (
+      lower.includes('xiaomi') ||
+      lower.includes('mi ') ||
+      lower.includes('redmi') ||
+      lower.includes('smart band')
+    ) {
       return 'Xiaomi / Redmi';
     }
-    if (lower.includes('huawei') || lower.includes('honor') || lower.includes('watch gt') || lower.includes('fit')) {
+    if (
+      lower.includes('huawei') ||
+      lower.includes('honor') ||
+      lower.includes('watch gt') ||
+      lower.includes('fit')
+    ) {
       return 'Huawei';
     }
     if (lower.includes('apple') || lower.includes('heartcast') || lower.includes('echo')) {
       return 'Apple Watch';
     }
-    if (lower.includes('garmin')) {
-      return 'Garmin';
-    }
-    if (lower.includes('polar')) {
-      return 'Polar';
-    }
-    if (lower.includes('galaxy') || lower.includes('samsung')) {
-      return 'Samsung Galaxy';
-    }
+    if (lower.includes('garmin')) return 'Garmin';
+    if (lower.includes('polar')) return 'Polar';
+    if (lower.includes('galaxy') || lower.includes('samsung')) return 'Samsung Galaxy';
     return 'Pulsómetro BLE';
   }, [deviceName]);
 
-  // Active zone based on current BPM
   const activeZone = useMemo(() => {
     return getZoneForHeartRate(bpm, zonesProfile);
   }, [bpm, zonesProfile]);
 
-  // Instant calories burned per minute using validated Keytel formula
   const instantKcalPerMin = useMemo(() => {
     return calculateKeytelCaloriesPerMinute({
       heartRate: bpm,
@@ -118,20 +136,6 @@ export function HeartRateMonitorWidget({
     });
   }, [bpm, weightKg, age, sex]);
 
-  // Sync callbacks to parent if provided
-  useEffect(() => {
-    if (onBpmChange) {
-      onBpmChange(bpm, activeZone);
-    }
-  }, [bpm, activeZone, onBpmChange]);
-
-  useEffect(() => {
-    if (onCaloriesUpdate) {
-      onCaloriesUpdate(accumulatedCalories);
-    }
-  }, [accumulatedCalories, onCaloriesUpdate]);
-
-  // Real-time calorie accumulation ticker (every 1 second)
   useEffect(() => {
     if (!deviceConnected && !isSimulating) return;
 
@@ -146,119 +150,118 @@ export function HeartRateMonitorWidget({
     return () => clearInterval(interval);
   }, [deviceConnected, isSimulating, instantKcalPerMin]);
 
-  // Simulation mode updater
   useEffect(() => {
     if (isSimulating) {
       setBpm(simulationBpm);
     }
   }, [isSimulating, simulationBpm]);
 
-  // Web Bluetooth API Heart Rate Service with Multi-Brand Compatibility
-  const connectBluetoothHeartRate = async (forceExtended = false) => {
-    setBleError(null);
+  const onDisconnected = useCallback(() => {
+    setDeviceConnected(false);
+    setDeviceName(null);
+  }, []);
 
-    if (typeof window === 'undefined' || !(navigator as any).bluetooth) {
-      setBleError(
-        'Web Bluetooth no está habilitado directamente en este navegador. En Android usa Chrome o Edge. En iPhone (iOS) usa la app gratuita Bluefy o activa el Modo Simulación.'
-      );
-      return;
-    }
-
-    try {
-      setIsConnecting(true);
-
-      const standardOptions = {
-        filters: [
-          { services: ['heart_rate'] },
-          { namePrefix: 'Mi ' },
-          { namePrefix: 'Xiaomi' },
-          { namePrefix: 'Redmi' },
-          { namePrefix: 'HUAWEI' },
-          { namePrefix: 'HONOR' },
-          { namePrefix: 'Band' },
-          { namePrefix: 'Watch' },
-          { namePrefix: 'Polar' },
-          { namePrefix: 'Garmin' },
-          { namePrefix: 'Heart' },
-          { namePrefix: 'Echo' },
-        ],
-        optionalServices: [
-          'heart_rate',
-          'battery_service',
-          'device_information',
-          0x180d,
-          '0000180d-0000-1000-8000-00805f9b34fb',
-        ],
-      };
-
-      const extendedOptions = {
-        acceptAllDevices: true,
-        optionalServices: [
-          'heart_rate',
-          'battery_service',
-          'device_information',
-          0x180d,
-          '0000180d-0000-1000-8000-00805f9b34fb',
-        ],
-      };
-
-      const scanConfig = forceExtended || scanMode === 'extended' ? extendedOptions : standardOptions;
-
-      const device = await (navigator as any).bluetooth.requestDevice(scanConfig);
-
-      bluetoothDeviceRef.current = device;
-      setDeviceName(device.name || 'Pulsómetro Inteligente');
-
-      device.addEventListener('gattserverdisconnected', onDisconnected);
-
-      const server = await device.gatt.connect();
-      gattServerRef.current = server;
-
-      // Intentar obtener servicio de pulso primario estándar
-      let service;
-      try {
-        service = await server.getPrimaryService('heart_rate');
-      } catch {
-        // Respaldo por UUID canónico de 128 bits
-        service = await server.getPrimaryService('0000180d-0000-1000-8000-00805f9b34fb');
-      }
-
-      const characteristic = await service.getCharacteristic('heart_rate_measurement');
-      await characteristic.startNotifications();
-      characteristic.addEventListener(
-        'characteristicvaluechanged',
-        handleHeartRateCharacteristicValueChanged
-      );
-
-      setDeviceConnected(true);
-      setIsSimulating(false);
-      setIsConnecting(false);
-    } catch (err: any) {
-      setIsConnecting(false);
-      if (err.name === 'NotFoundError') {
-        // Cancelado por el usuario
-        return;
-      }
-      setBleError(
-        `${err?.message || 'Error al conectar el pulsómetro'}. Tip: Verifica haber activado "Compartir FC" o "Transmitir FC" en tu reloj/app.`
-      );
-    }
-  };
-
-  const handleHeartRateCharacteristicValueChanged = (event: any) => {
+  const handleHeartRateCharacteristicValueChanged = useCallback((event: any) => {
     const value: DataView = event.target.value;
     const packet = parseBluetoothHeartRatePacket(value);
     if (packet.bpm > 0) {
       setBpm(packet.bpm);
     }
-  };
+  }, []);
 
-  const onDisconnected = () => {
-    setDeviceConnected(false);
-    setDeviceName(null);
-  };
+  const connectBluetoothHeartRate = useCallback(
+    async (forceExtended = false) => {
+      setBleError(null);
 
-  const disconnectBluetooth = () => {
+      if (typeof window === 'undefined' || !(navigator as any).bluetooth) {
+        setBleError(
+          'Web Bluetooth no está habilitado directamente en este navegador. En Android usa Chrome o Edge. En iPhone (iOS) usa la app gratuita Bluefy o activa el Modo Simulación.'
+        );
+        return;
+      }
+
+      try {
+        setIsConnecting(true);
+
+        const standardOptions = {
+          filters: [
+            { services: ['heart_rate'] },
+            { namePrefix: 'Mi ' },
+            { namePrefix: 'Xiaomi' },
+            { namePrefix: 'Redmi' },
+            { namePrefix: 'HUAWEI' },
+            { namePrefix: 'HONOR' },
+            { namePrefix: 'Band' },
+            { namePrefix: 'Watch' },
+            { namePrefix: 'Polar' },
+            { namePrefix: 'Garmin' },
+            { namePrefix: 'Heart' },
+            { namePrefix: 'Echo' },
+          ],
+          optionalServices: [
+            'heart_rate',
+            'battery_service',
+            'device_information',
+            0x180d,
+            '0000180d-0000-1000-8000-00805f9b34fb',
+          ],
+        };
+
+        const extendedOptions = {
+          acceptAllDevices: true,
+          optionalServices: [
+            'heart_rate',
+            'battery_service',
+            'device_information',
+            0x180d,
+            '0000180d-0000-1000-8000-00805f9b34fb',
+          ],
+        };
+
+        const scanConfig =
+          forceExtended || scanMode === 'extended' ? extendedOptions : standardOptions;
+
+        const device = await (navigator as any).bluetooth.requestDevice(scanConfig);
+
+        bluetoothDeviceRef.current = device;
+        setDeviceName(device.name || 'Pulsómetro Inteligente');
+
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+
+        const server = await device.gatt.connect();
+        gattServerRef.current = server;
+
+        let service;
+        try {
+          service = await server.getPrimaryService('heart_rate');
+        } catch {
+          service = await server.getPrimaryService('0000180d-0000-1000-8000-00805f9b34fb');
+        }
+
+        const characteristic = await service.getCharacteristic('heart_rate_measurement');
+        await characteristic.startNotifications();
+        characteristic.addEventListener(
+          'characteristicvaluechanged',
+          handleHeartRateCharacteristicValueChanged
+        );
+
+        setDeviceConnected(true);
+        setIsSimulating(false);
+        setIsConnecting(false);
+      } catch (err: any) {
+        setIsConnecting(false);
+        if (err.name === 'NotFoundError') {
+          return;
+        }
+        setBleError(
+          `${err?.message || 'Error al conectar el pulsómetro'}. Tip: Verifica haber activado "Compartir FC" o "Transmitir FC" en tu reloj/app.`
+        );
+      }
+    },
+    [handleHeartRateCharacteristicValueChanged, onDisconnected, scanMode]
+  );
+
+  const disconnectBluetooth = useCallback(() => {
     try {
       if (gattServerRef.current && gattServerRef.current.connected) {
         gattServerRef.current.disconnect();
@@ -266,12 +269,213 @@ export function HeartRateMonitorWidget({
     } catch {}
     setDeviceConnected(false);
     setDeviceName(null);
-  };
+  }, []);
 
-  // Pulse animation duration in seconds derived from current BPM
+  const resetCalories = useCallback(() => {
+    setAccumulatedCalories(0);
+    setActiveSeconds(0);
+  }, []);
+
   const pulseDurationSec = useMemo(() => {
     return Math.max(0.3, Math.min(2.0, 60 / Math.max(40, bpm)));
   }, [bpm]);
+
+  const value = useMemo<HeartRateTelemetryContextValue>(
+    () => ({
+      deviceConnected,
+      deviceName,
+      detectedBrand,
+      isConnecting,
+      bleError,
+      scanMode,
+      setScanMode,
+      bpm,
+      isSimulating,
+      setIsSimulating,
+      simulationBpm,
+      setSimulationBpm,
+      accumulatedCalories,
+      activeSeconds,
+      zonesProfile,
+      activeZone,
+      instantKcalPerMin,
+      pulseDurationSec,
+      connectBluetoothHeartRate,
+      disconnectBluetooth,
+      resetCalories,
+    }),
+    [
+      deviceConnected,
+      deviceName,
+      detectedBrand,
+      isConnecting,
+      bleError,
+      scanMode,
+      bpm,
+      isSimulating,
+      simulationBpm,
+      accumulatedCalories,
+      activeSeconds,
+      zonesProfile,
+      activeZone,
+      instantKcalPerMin,
+      pulseDurationSec,
+      connectBluetoothHeartRate,
+      disconnectBluetooth,
+      resetCalories,
+    ]
+  );
+
+  return (
+    <HeartRateTelemetryContext.Provider value={value}>
+      {children}
+    </HeartRateTelemetryContext.Provider>
+  );
+}
+
+export function useHeartRateTelemetry() {
+  const ctx = useContext(HeartRateTelemetryContext);
+  if (!ctx) {
+    throw new Error('useHeartRateTelemetry debe usarse dentro de HeartRateTelemetryProvider');
+  }
+  return ctx;
+}
+
+/**
+ * Barra flotante permanente (idéntica al HUD del temporizador) que permanece visible en
+ * toda la app cuando el reloj del usuario está conectado exitosamente (o en simulación).
+ * Muestra: Pulsaciones en vivo (BPM), Fase actual (1..5) y Calorías quemadas acumuladas.
+ */
+export function FloatingHeartRateHUD() {
+  const {
+    deviceConnected,
+    isSimulating,
+    deviceName,
+    detectedBrand,
+    bpm,
+    activeZone,
+    accumulatedCalories,
+    instantKcalPerMin,
+    pulseDurationSec,
+  } = useHeartRateTelemetry();
+  const { activeTab, setActiveTab } = useKairos();
+  const { snapshot, isDrawerExpanded } = useTimerEngine();
+
+  // Solo aparece permanentemente cuando el reloj está conectado (o simulando activamente)
+  if (!deviceConnected && !isSimulating) {
+    return null;
+  }
+
+  // Si en una pestaña distinta a Timer hay además un temporizador corriendo o su toast activo,
+  // apilamos la barra de pulsaciones justo encima del temporizador para que nunca se tapen.
+  const timerHudVisible =
+    activeTab !== 'timer' &&
+    (snapshot.isActive || isDrawerExpanded || Boolean(snapshot.lastAutoSavedNotice));
+
+  const bottomClass = timerHudVisible
+    ? 'bottom-[calc(8.3rem+env(safe-area-inset-bottom))]'
+    : 'bottom-[calc(4.4rem+env(safe-area-inset-bottom))]';
+
+  return (
+    <div
+      className={`fixed inset-x-0 ${bottomClass} z-40 mx-auto max-w-[430px] px-3 pointer-events-none transition-all duration-200`}
+    >
+      <div className="pointer-events-auto rounded-2xl border border-stoneborder bg-surface/95 shadow-2xl backdrop-blur-xl overflow-hidden">
+        <div
+          className="h-[2px] w-full transition-colors duration-300"
+          style={{ backgroundColor: activeZone.accentHex }}
+        />
+
+        <div className="flex items-center justify-between gap-2 px-3.5 py-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('timer')}
+            className="flex items-center gap-2 min-w-0 flex-1 text-left"
+            title="Ver panel completo de telemetría en Temporizador"
+          >
+            <Heart
+              className="h-4 w-4 shrink-0 fill-rose-500/25 text-rose-500"
+              style={{
+                animation: `pulse ${pulseDurationSec}s ease-in-out infinite`,
+              }}
+            />
+            <div className="flex items-baseline gap-1 shrink-0">
+              <span className="font-mono text-base font-bold tabular-nums text-brand">
+                {bpm}
+              </span>
+              <span className="text-[10px] font-mono text-brand-muted">BPM</span>
+            </div>
+
+            <span
+              className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${activeZone.badgeBg}`}
+            >
+              {activeZone.shortName}
+            </span>
+
+            <span className="truncate text-[11px] text-brand-muted">
+              {activeZone.name.split('·')[1]?.trim() ||
+                detectedBrand ||
+                deviceName ||
+                'En vivo'}
+            </span>
+          </button>
+
+          <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-stoneborder/70">
+            <Flame className="h-3.5 w-3.5 text-amber-400 fill-amber-500/20" />
+            <div className="text-right">
+              <div className="font-mono text-sm font-bold tabular-nums text-brand leading-none">
+                {accumulatedCalories.toFixed(0)}{' '}
+                <span className="text-[10px] font-normal text-brand-muted">kcal</span>
+              </div>
+              <div className="font-mono text-[9px] tabular-nums text-amber-400/90 leading-tight">
+                {instantKcalPerMin.toFixed(1)}/min
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function HeartRateMonitorWidget({
+  onBpmChange,
+  onCaloriesUpdate,
+}: HeartRateMonitorWidgetProps) {
+  const {
+    deviceConnected,
+    deviceName,
+    detectedBrand,
+    isConnecting,
+    bleError,
+    bpm,
+    isSimulating,
+    setIsSimulating,
+    simulationBpm,
+    setSimulationBpm,
+    accumulatedCalories,
+    zonesProfile,
+    activeZone,
+    instantKcalPerMin,
+    pulseDurationSec,
+    connectBluetoothHeartRate,
+    disconnectBluetooth,
+  } = useHeartRateTelemetry();
+
+  const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
+  const [activeGuideTab, setActiveGuideTab] = useState<BrandTab>('xiaomi');
+
+  useEffect(() => {
+    if (onBpmChange) {
+      onBpmChange(bpm, activeZone);
+    }
+  }, [bpm, activeZone, onBpmChange]);
+
+  useEffect(() => {
+    if (onCaloriesUpdate) {
+      onCaloriesUpdate(accumulatedCalories);
+    }
+  }, [accumulatedCalories, onCaloriesUpdate]);
 
   return (
     <div className="rounded-3xl border border-stoneborder bg-surface p-4 sm:p-5 space-y-4">
@@ -469,7 +673,6 @@ export function HeartRateMonitorWidget({
           type="button"
           onClick={() => {
             setIsSimulating((prev) => !prev);
-            if (!isSimulating) setBpm(simulationBpm);
           }}
           className="w-full flex items-center justify-between text-[11px] text-brand-muted hover:text-brand transition-colors py-1"
         >

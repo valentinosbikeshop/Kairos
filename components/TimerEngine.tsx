@@ -290,6 +290,15 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
     };
   }, [acquireWakeLock]);
 
+  // Keep the iOS audio session alive while any timer is running so cues are never swallowed
+  useEffect(() => {
+    kairosAudio.setKeepAlive(snapshot.isActive && snapshot.isRunning);
+  }, [snapshot.isActive, snapshot.isRunning]);
+
+  useEffect(() => {
+    return () => kairosAudio.setKeepAlive(false);
+  }, []);
+
   const computeAndSyncState = useCallback(() => {
     const cfg = configRef.current;
     const segments = segmentsRef.current;
@@ -425,7 +434,7 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
         emitTimerConclusion('stopped_by_user', prevElapsed);
       }
 
-      kairosAudio.unlock();
+      kairosAudio.unlock(true);
       void acquireWakeLock();
       configRef.current = cfg;
       segmentsRef.current = buildTimeline(cfg);
@@ -514,7 +523,7 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
   );
 
   const togglePauseResume = useCallback(() => {
-    kairosAudio.unlock();
+    kairosAudio.unlock(true);
     if (!configRef.current) return;
 
     if (!isActiveRef.current && snapshot.phase === 'finished') {

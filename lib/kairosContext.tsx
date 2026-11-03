@@ -53,7 +53,7 @@ import {
 } from '@/lib/aiRoutineEngine';
 import { kairosAudio } from '@/lib/audioEngine';
 import { buildSessionImpactReport, evaluateAllExercises } from '@/lib/analyticsEngine';
-import { MODE_META, uid } from '@/lib/formatters';
+import { getResolvedWorkoutDefaults, MODE_META, uid } from '@/lib/formatters';
 import { useTimerEngine } from '@/components/TimerEngine';
 
 interface KairosContextValue {
@@ -156,10 +156,13 @@ function createDefaultExerciseEntry(
   item: ExerciseCatalogItem,
   targetMode: TrainingMode,
   sessions: WorkoutSession[],
-  overrideCardioDiscipline?: CardioDiscipline
+  overrideCardioDiscipline?: CardioDiscipline,
+  profile?: UserProfile | null
 ): WorkoutExercise {
   const ghost = getLastExerciseGhost(sessions, item.id, item.name);
   const ghostSets = cloneSetsFromGhost(ghost?.lastExercise, () => uid('set'), targetMode);
+  const defs = getResolvedWorkoutDefaults(profile);
+  const hasCustomRest = Boolean(profile?.workoutDefaults?.defaultRestSeconds);
   const defaultRest = MODE_META[targetMode].defaultRest;
 
   const base: WorkoutExercise = {
@@ -168,7 +171,11 @@ function createDefaultExerciseEntry(
     name: item.name,
     mode: targetMode,
     muscleGroup: item.muscleGroup,
-    defaultRestSeconds: item.mode === targetMode ? item.defaultRestSeconds : defaultRest,
+    defaultRestSeconds: hasCustomRest
+      ? defs.defaultRestSeconds
+      : item.mode === targetMode
+        ? item.defaultRestSeconds
+        : defaultRest,
     calisthenicsSubType: item.calisthenicsSubType ?? 'dynamic',
     cardioDiscipline: overrideCardioDiscipline ?? item.cardioDiscipline ?? 'jumprope',
   };
@@ -177,37 +184,47 @@ function createDefaultExerciseEntry(
     return { ...base, ...ghostSets };
   }
 
+  const effectiveCount = Math.max(1, defs.defaultEffectiveSets);
+  const warmupCount = Math.max(0, defs.defaultWarmupSets);
+
   if (targetMode === 'hypertrophy') {
+    const warmupSets = Array.from({ length: warmupCount }, () => ({
+      id: uid('hy'),
+      weightKg: 20,
+      reps: defs.defaultReps,
+      rir: '4+' as const,
+      setType: 'Calentamiento' as const,
+      restSeconds: base.defaultRestSeconds,
+      completed: false,
+    }));
+    const effectiveSets = Array.from({ length: effectiveCount }, () => ({
+      id: uid('hy'),
+      weightKg: 30,
+      reps: defs.defaultReps,
+      rir: defs.defaultRir,
+      setType: 'Efectiva' as const,
+      restSeconds: base.defaultRestSeconds,
+      completed: false,
+    }));
     return {
       ...base,
-      hypertrophySets: [
-        {
-          id: uid('hy'),
-          weightKg: 30,
-          reps: 10,
-          rir: '2',
-          setType: 'Efectiva',
-          restSeconds: base.defaultRestSeconds,
-          completed: false,
-        },
-      ],
+      hypertrophySets: [...warmupSets, ...effectiveSets],
     };
   }
 
   if (targetMode === 'strength') {
+    const totalStrengthSets = Math.max(1, warmupCount + effectiveCount);
     return {
       ...base,
       referenceOneRmKg: 90,
-      strengthSets: [
-        {
-          id: uid('st'),
-          weightKg: 70,
-          reps: 5,
-          rpe: 8.0,
-          restSeconds: base.defaultRestSeconds,
-          completed: false,
-        },
-      ],
+      strengthSets: Array.from({ length: totalStrengthSets }, (_, idx) => ({
+        id: uid('st'),
+        weightKg: idx < warmupCount ? 50 : 70,
+        reps: profile?.workoutDefaults?.defaultReps ? defs.defaultReps : 5,
+        rpe: idx < warmupCount ? 6.5 : defs.defaultRpe,
+        restSeconds: base.defaultRestSeconds,
+        completed: false,
+      })),
     };
   }
 
@@ -216,33 +233,29 @@ function createDefaultExerciseEntry(
       return {
         ...base,
         calisthenicsSubType: 'isometric',
-        calisthenicsIsometricSets: [
-          {
-            id: uid('ci'),
-            progression: 'Tuck',
-            targetSeconds: 12,
-            actualSeconds: 12,
-            addedWeightKg: 0,
-            restSeconds: base.defaultRestSeconds,
-            completed: false,
-          },
-        ],
+        calisthenicsIsometricSets: Array.from({ length: effectiveCount }, () => ({
+          id: uid('ci'),
+          progression: 'Tuck' as const,
+          targetSeconds: defs.defaultIsometricSeconds,
+          actualSeconds: defs.defaultIsometricSeconds,
+          addedWeightKg: 0,
+          restSeconds: base.defaultRestSeconds,
+          completed: false,
+        })),
       };
     }
     return {
       ...base,
       calisthenicsSubType: 'dynamic',
-      calisthenicsDynamicSets: [
-        {
-          id: uid('cd'),
-          variation: 'Estricto',
-          addedWeightKg: 0,
-          reps: 8,
-          rir: '2',
-          restSeconds: base.defaultRestSeconds,
-          completed: false,
-        },
-      ],
+      calisthenicsDynamicSets: Array.from({ length: effectiveCount }, () => ({
+        id: uid('cd'),
+        variation: 'Estricto',
+        addedWeightKg: 0,
+        reps: profile?.workoutDefaults?.defaultReps ? defs.defaultReps : 8,
+        rir: defs.defaultRir,
+        restSeconds: base.defaultRestSeconds,
+        completed: false,
+      })),
     };
   }
 
@@ -1002,7 +1015,8 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
             item,
             blk.mode,
             sessions,
-            blk.mode === 'cardio' ? item.cardioDiscipline ?? blk.cardioDiscipline : undefined
+            blk.mode === 'cardio' ? item.cardioDiscipline ?? blk.cardioDiscipline : undefined,
+            profile
           );
           return {
             ...blk,
@@ -1011,7 +1025,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
         }),
       }));
     },
-    [sessions]
+    [profile, sessions]
   );
 
   const createAndAddCustomExercise = useCallback(

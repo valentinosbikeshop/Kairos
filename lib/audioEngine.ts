@@ -31,6 +31,8 @@ export const SOUND_PROFILE_META: Record<
   },
 };
 
+export type KairosAudioHealth = 'unavailable' | 'locked' | 'running';
+
 class KairosAudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -41,13 +43,26 @@ class KairosAudioEngine {
     vibrationEnabled: true,
   };
   private mixTestTimers: ReturnType<typeof setTimeout>[] = [];
+  private autoUnlockInstalled = false;
+  private needsRecreate = false;
+  private keepAliveSource: AudioBufferSourceNode | null = null;
+  private keepAliveWanted = false;
+  private healthListeners = new Set<(health: KairosAudioHealth) => void>();
+  private transientResetTimer: ReturnType<typeof setTimeout> | null = null;
+  private htmlAudioEl: HTMLAudioElement | null = null;
+  private wavCache = new Map<string, string>();
 
+  /**
+   * iOS: 'ambient' mezcla los pitidos con Apple Music / Spotify sin pausar la música.
+   * Cuando suena un aviso del timer, conmutamos brevemente a 'transient' para que iOS
+   * atenúe (ducking) ligeramente Apple Music durante el pitido y luego restaure el volumen al 100%.
+   */
   public configureAmbientSession(): void {
     if (typeof navigator === 'undefined') return;
     if ('audioSession' in navigator) {
       try {
         const nav = navigator as NavigatorWithAudioSession;
-        if (nav.audioSession) {
+        if (nav.audioSession && nav.audioSession.type !== 'ambient') {
           nav.audioSession.type = 'ambient';
         }
       } catch {
@@ -56,39 +71,356 @@ class KairosAudioEngine {
     }
   }
 
-  public unlock(): AudioContext | null {
+  private pulseTransientAudioSession(durationMs: number): void {
+    if (typeof navigator === 'undefined' || !('audioSession' in navigator)) return;
+    try {
+      const nav = navigator as NavigatorWithAudioSession;
+      if (nav.audioSession) {
+        nav.audioSession.type = 'transient';
+        if (this.transientResetTimer) clearTimeout(this.transientResetTimer);
+        this.transientResetTimer = setTimeout(() => {
+          try {
+            if (nav.audioSession) {
+              nav.audioSession.type = 'ambient';
+            }
+          } catch {
+            // Ignore
+          }
+        }, Math.max(180, durationMs));
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  private buildWavDataUri(
+    tones: { freq: number; startSec: number; durSec: number; amp: number }[],
+    totalSec: number
+  ): string {
+    const key = `${this.settings.profile}_${Math.round(this.settings.gainPercent)}_${tones
+      .map((t) => `${t.freq}:${t.startSec}:${t.durSec}`)
+      .join('|')}`;
+    const cached = this.wavCache.get(key);
+    if (cached) return cached;
+
+    const sampleRate = 22050;
+    const numSamples = Math.max(1, Math.floor(sampleRate * totalSec));
+    const buffer = new ArrayBuffer(44 + numSamples * 2);
+    const view = new DataView(buffer);
+
+    const writeStr = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    };
+
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + numSamples * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, numSamples * 2, true);
+
+    const linearGain = Math.min(2.0, this.percentToLinearGain(this.settings.gainPercent));
+
+    for (let i = 0; i < numSamples; i++) {
+      const t = i / sampleRate;
+      let sample = 0;
+      for (const tone of tones) {
+        if (t >= tone.startSec && t <= tone.startSec + tone.durSec) {
+          const localT = t - tone.startSec;
+          const attack = Math.min(1, localT / 0.006);
+          const decay = Math.exp((-3.5 * localT) / tone.durSec);
+          sample += Math.sin(2 * Math.PI * tone.freq * localT) * tone.amp * attack * decay;
+        }
+      }
+      const boosted = Math.max(-0.98, Math.min(0.98, sample * linearGain));
+      view.setInt16(44 + i * 2, Math.round(boosted * 32767), true);
+    }
+
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const uri = `data:audio/wav;base64,${typeof btoa === 'function' ? btoa(binary) : ''}`;
+    if (this.wavCache.size > 24) this.wavCache.clear();
+    this.wavCache.set(key, uri);
+    return uri;
+  }
+
+  private playFallbackWav(
+    tones: { freq: number; startSec: number; durSec: number; amp: number }[],
+    totalSec: number
+  ): void {
+    if (typeof window === 'undefined' || this.settings.gainPercent <= 0) return;
+    try {
+      const uri = this.buildWavDataUri(tones, totalSec);
+      if (!this.htmlAudioEl) {
+        this.htmlAudioEl = new Audio();
+        this.htmlAudioEl.preload = 'auto';
+      }
+      this.htmlAudioEl.src = uri;
+      this.htmlAudioEl.volume = Math.min(1, Math.max(0.15, this.settings.gainPercent / 115));
+      void this.htmlAudioEl.play().catch(() => undefined);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /** Estado actual del motor de audio para diagnósticos de la UI. */
+  public getHealth(): KairosAudioHealth {
+    if (typeof window === 'undefined') return 'unavailable';
+    const AudioCtx =
+      window.AudioContext || (window as unknown as WindowWithWebkitAudio).webkitAudioContext;
+    if (!AudioCtx) return 'unavailable';
+    if (!this.ctx) return 'locked';
+    return this.ctx.state === 'running' ? 'running' : 'locked';
+  }
+
+  public subscribeHealth(listener: (health: KairosAudioHealth) => void): () => void {
+    this.healthListeners.add(listener);
+    listener(this.getHealth());
+    return () => {
+      this.healthListeners.delete(listener);
+    };
+  }
+
+  private emitHealth(): void {
+    const health = this.getHealth();
+    this.healthListeners.forEach((fn) => fn(health));
+  }
+
+  private createContext(): AudioContext | null {
+    const AudioCtx =
+      window.AudioContext || (window as unknown as WindowWithWebkitAudio).webkitAudioContext;
+    if (!AudioCtx) return null;
+
+    const ctx = new AudioCtx({ latencyHint: 'interactive' });
+
+    // Signal Chain: Oscillator -> Envelope Gain -> MasterGain -> DynamicsCompressor -> Destination
+    const masterGain = ctx.createGain();
+    const compressor = ctx.createDynamicsCompressor();
+
+    // Tuned dynamics compressor so 200% boost cuts over Spotify/Apple Music without clipping
+    compressor.threshold.setValueAtTime(-10, ctx.currentTime);
+    compressor.knee.setValueAtTime(16, ctx.currentTime);
+    compressor.ratio.setValueAtTime(10, ctx.currentTime);
+    compressor.attack.setValueAtTime(0.002, ctx.currentTime);
+    compressor.release.setValueAtTime(0.14, ctx.currentTime);
+
+    masterGain.connect(compressor);
+    compressor.connect(ctx.destination);
+
+    ctx.onstatechange = () => {
+      // iOS usa el estado no estándar 'interrupted' cuando otra app (Apple Music, llamada, Siri)
+      // toma la sesión de audio. Lo marcamos para recrear el contexto en el próximo toque.
+      const state = ctx.state as string;
+      if (state === 'interrupted') {
+        this.needsRecreate = true;
+      }
+      if (state === 'running') {
+        this.needsRecreate = false;
+        if (this.keepAliveWanted) this.startKeepAliveSource();
+      }
+      this.emitHealth();
+    };
+
+    this.ctx = ctx;
+    this.masterGain = masterGain;
+    this.compressor = compressor;
+    this.keepAliveSource = null;
+    this.applyMasterGain();
+    return ctx;
+  }
+
+  private destroyContext(): void {
+    const old = this.ctx;
+    this.stopKeepAliveSource();
+    this.ctx = null;
+    this.masterGain = null;
+    this.compressor = null;
+    if (old) {
+      old.onstatechange = null;
+      void old.close().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Plays a 1-sample silent buffer. iOS only fully unlocks Web Audio when a source is started
+   * synchronously inside a user gesture.
+   */
+  private primeWithSilentBuffer(ctx: AudioContext): void {
+    try {
+      const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Debe llamarse desde gestos del usuario (toques) o antes de reproducir.
+   * Reanuda el contexto tanto en 'suspended' como en 'interrupted' (iOS) y lo recrea si quedó bloqueado.
+   */
+  public unlock(fromGesture = false): AudioContext | null {
     if (typeof window === 'undefined') return null;
 
     this.configureAmbientSession();
+    this.installAutoUnlock();
+
+    const state = this.ctx?.state as string | undefined;
+    if (this.ctx && (state === 'closed' || (fromGesture && this.needsRecreate && state !== 'running'))) {
+      this.destroyContext();
+      this.needsRecreate = false;
+    }
 
     if (!this.ctx) {
-      const AudioCtx =
-        window.AudioContext || (window as unknown as WindowWithWebkitAudio).webkitAudioContext;
-      if (!AudioCtx) return null;
-
-      this.ctx = new AudioCtx({ latencyHint: 'interactive' });
-
-      // Signal Chain: Oscillator -> Envelope Gain -> MasterGain -> DynamicsCompressor -> Destination
-      this.masterGain = this.ctx.createGain();
-      this.compressor = this.ctx.createDynamicsCompressor();
-
-      // Tuned dynamics compressor so 200% boost cuts over Spotify/Apple Music without clipping
-      this.compressor.threshold.setValueAtTime(-10, this.ctx.currentTime);
-      this.compressor.knee.setValueAtTime(16, this.ctx.currentTime);
-      this.compressor.ratio.setValueAtTime(10, this.ctx.currentTime);
-      this.compressor.attack.setValueAtTime(0.002, this.ctx.currentTime);
-      this.compressor.release.setValueAtTime(0.14, this.ctx.currentTime);
-
-      this.masterGain.connect(this.compressor);
-      this.compressor.connect(this.ctx.destination);
-      this.applyMasterGain();
+      if (!this.createContext()) return null;
     }
 
-    if (this.ctx.state === 'suspended') {
-      void this.ctx.resume();
+    const ctx = this.ctx as AudioContext;
+    if (fromGesture) this.primeWithSilentBuffer(ctx);
+
+    if ((ctx.state as string) !== 'running') {
+      ctx
+        .resume()
+        .then(() => this.emitHealth())
+        .catch(() => {
+          this.needsRecreate = true;
+          this.emitHealth();
+        });
     }
 
-    return this.ctx;
+    return ctx;
+  }
+
+  /**
+   * Re-desbloquea el audio automáticamente con cualquier toque en pantalla y al volver a la app.
+   * Soluciona el silencio total tras cambiar a Apple Music / Spotify y regresar a KAIROS.
+   */
+  private installAutoUnlock(): void {
+    if (this.autoUnlockInstalled || typeof window === 'undefined') return;
+    this.autoUnlockInstalled = true;
+
+    const onGesture = () => {
+      if (!this.ctx || (this.ctx.state as string) !== 'running' || this.needsRecreate) {
+        this.unlock(true);
+      }
+    };
+    const gestureEvents: (keyof WindowEventMap)[] = ['pointerdown', 'touchend', 'click', 'keydown'];
+    gestureEvents.forEach((evt) =>
+      window.addEventListener(evt, onGesture, { capture: true, passive: true })
+    );
+
+    const onForeground = () => {
+      if (document.visibilityState !== 'visible') return;
+      this.configureAmbientSession();
+      if (this.ctx && (this.ctx.state as string) !== 'running') {
+        this.ctx
+          .resume()
+          .then(() => this.emitHealth())
+          .catch(() => {
+            this.needsRecreate = true;
+            this.emitHealth();
+          });
+      }
+    };
+    document.addEventListener('visibilitychange', onForeground);
+    window.addEventListener('pageshow', onForeground);
+    window.addEventListener('focus', onForeground);
+  }
+
+  /**
+   * Mantiene viva la sesión de audio mientras hay un temporizador activo para que iOS
+   * no duerma el hardware entre pitidos. Emite una señal a -100 dB (inaudible).
+   */
+  public setKeepAlive(active: boolean): void {
+    this.keepAliveWanted = active;
+    if (active) {
+      this.unlock();
+      this.startKeepAliveSource();
+    } else {
+      this.stopKeepAliveSource();
+    }
+  }
+
+  private startKeepAliveSource(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.keepAliveSource) return;
+    try {
+      const seconds = 1;
+      const buffer = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = (Math.random() * 2 - 1) * 0.00001;
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      src.connect(ctx.destination);
+      src.start();
+      this.keepAliveSource = src;
+    } catch {
+      this.keepAliveSource = null;
+    }
+  }
+
+  private stopKeepAliveSource(): void {
+    if (!this.keepAliveSource) return;
+    try {
+      this.keepAliveSource.stop();
+      this.keepAliveSource.disconnect();
+    } catch {
+      // Ignore
+    }
+    this.keepAliveSource = null;
+  }
+
+  /**
+   * Ejecuta el sintetizador únicamente con el contexto en estado 'running'.
+   * Si está suspendido/interrumpido, espera a que se reanude para no programar sonidos
+   * en un reloj congelado (causa de pitidos perdidos en iOS).
+   */
+  private withRunningContext(play: (ctx: AudioContext, master: GainNode, now: number) => void): void {
+    const ctx = this.unlock();
+    if (!ctx) return;
+
+    const run = () => {
+      if (!this.ctx || !this.masterGain) return;
+      play(this.ctx, this.masterGain, this.ctx.currentTime + 0.012);
+    };
+
+    if ((ctx.state as string) === 'running') {
+      run();
+      return;
+    }
+
+    let done = false;
+    const timeout = setTimeout(() => {
+      done = true;
+    }, 1200);
+    ctx
+      .resume()
+      .then(() => {
+        clearTimeout(timeout);
+        if (!done) run();
+      })
+      .catch(() => {
+        clearTimeout(timeout);
+        this.needsRecreate = true;
+        this.emitHealth();
+      });
   }
 
   public updateSettings(next: Partial<AudioSettings>): void {
@@ -134,10 +466,21 @@ class KairosAudioEngine {
     this.vibrate(35);
     if (this.settings.gainPercent <= 0) return;
 
-    const ctx = this.unlock();
-    if (!ctx || !this.masterGain) return;
+    this.pulseTransientAudioSession(260);
 
-    const now = ctx.currentTime;
+    const ctx = this.unlock();
+    if (!ctx || (ctx.state as string) !== 'running') {
+      const freq = this.settings.profile === 'tactical' ? 1200 : 880;
+      this.playFallbackWav([{ freq, startSec: 0, durSec: 0.13, amp: 0.75 }], 0.16);
+    }
+
+    this.withRunningContext((c, _master, now) =>
+      this.synthCountdownPip(c, now, secondRemaining)
+    );
+  }
+
+  private synthCountdownPip(ctx: AudioContext, now: number, secondRemaining: 3 | 2 | 1): void {
+    if (!this.masterGain) return;
     const profile = this.settings.profile;
 
     if (profile === 'minimal') {
@@ -214,10 +557,32 @@ class KairosAudioEngine {
     this.vibrate(cueType === 'rest' ? [60, 40, 60] : [90, 45, 130]);
     if (this.settings.gainPercent <= 0) return;
 
-    const ctx = this.unlock();
-    if (!ctx || !this.masterGain) return;
+    this.pulseTransientAudioSession(750);
 
-    const now = ctx.currentTime;
+    const ctx = this.unlock();
+    if (!ctx || (ctx.state as string) !== 'running') {
+      const tones =
+        cueType === 'rest'
+          ? [
+              { freq: 880, startSec: 0, durSec: 0.22, amp: 0.72 },
+              { freq: 659.25, startSec: 0.15, durSec: 0.28, amp: 0.72 },
+            ]
+          : [
+              { freq: 880, startSec: 0, durSec: 0.42, amp: 0.72 },
+              { freq: 1318.5, startSec: 0.06, durSec: 0.45, amp: 0.72 },
+            ];
+      this.playFallbackWav(tones, 0.56);
+    }
+
+    this.withRunningContext((c, _master, now) => this.synthCompletionCue(c, now, cueType));
+  }
+
+  private synthCompletionCue(
+    ctx: AudioContext,
+    now: number,
+    cueType: 'finish' | 'work' | 'rest'
+  ): void {
+    if (!this.masterGain) return;
     const profile = this.settings.profile;
 
     if (profile === 'minimal') {
@@ -345,24 +710,22 @@ class KairosAudioEngine {
   public playSetCheckFeedback(): void {
     this.vibrate(20);
     if (this.settings.gainPercent <= 0) return;
-    const ctx = this.unlock();
-    if (!ctx || !this.masterGain) return;
+    this.withRunningContext((ctx, master, now) => {
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1046.5, now);
+      osc.frequency.exponentialRampToValueAtTime(1318.5, now + 0.065);
 
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const env = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1046.5, now);
-    osc.frequency.exponentialRampToValueAtTime(1318.5, now + 0.065);
+      env.gain.setValueAtTime(0.0001, now);
+      env.gain.exponentialRampToValueAtTime(0.32, now + 0.006);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.085);
 
-    env.gain.setValueAtTime(0.0001, now);
-    env.gain.exponentialRampToValueAtTime(0.32, now + 0.006);
-    env.gain.exponentialRampToValueAtTime(0.0001, now + 0.085);
-
-    osc.connect(env);
-    env.connect(this.masterGain);
-    osc.start(now);
-    osc.stop(now + 0.09);
+      osc.connect(env);
+      env.connect(master);
+      osc.start(now);
+      osc.stop(now + 0.09);
+    });
   }
 
   /**
@@ -370,7 +733,7 @@ class KairosAudioEngine {
    */
   public triggerMusicMixTest(onStepChange?: (step: string | null) => void): void {
     this.cancelMusicMixTest();
-    this.unlock();
+    this.unlock(true);
 
     onStepChange?.('3');
     this.playCountdownPip(3);

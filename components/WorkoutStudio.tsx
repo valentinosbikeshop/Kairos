@@ -6,7 +6,7 @@ import { useKairos } from '@/lib/kairosContext';
 import { PolymorphicExerciseCard } from '@/components/PolymorphicExerciseCard';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 import { SoundSettingsButton } from '@/components/AudioMixerPanel';
-import { HeartRateMonitorWidget } from '@/components/HeartRateMonitorWidget';
+import { AppUpdateButton } from '@/components/AppUpdateManager';
 import { resolveTodayRoutineStatus } from '@/lib/aiRoutineEngine';
 import { getContextualTips, getDailyMotivationalQuote } from '@/lib/knowledgeBase';
 import { formatMmSs, MODE_META } from '@/lib/formatters';
@@ -171,7 +171,8 @@ export function WorkoutStudio() {
             KAIROS
           </span>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <AppUpdateButton compact />
             <SoundSettingsButton />
 
             <button
@@ -459,9 +460,6 @@ export function WorkoutStudio() {
             )}
           </div>
         )}
-
-        {/* ================= TELEMETRÍA CARDÍACA EN VIVO ================= */}
-        <HeartRateMonitorWidget />
 
         {/* ================= WORKOUT BLOCKS ================= */}
         <div className="space-y-4">

@@ -322,6 +322,25 @@ export interface AuthenticatedUser {
   onboardingCompleted: boolean;
 }
 
+export interface UserWorkoutDefaults {
+  /** Segundos de descanso por serie por defecto (ej. 120s) */
+  defaultRestSeconds: number;
+  /** Repeticiones objetivo por serie por defecto (ej. 10) */
+  defaultReps: number;
+  /** Cantidad de series efectivas al agregar un ejercicio (ej. 3) */
+  defaultEffectiveSets: number;
+  /** Cantidad de series de calentamiento al agregar un ejercicio (ej. 1) */
+  defaultWarmupSets: number;
+  /** RIR objetivo por defecto ('0' | '1' | '2' | '3' | '4+') */
+  defaultRir: RirValue;
+  /** RPE objetivo por defecto en fuerza (ej. 8) */
+  defaultRpe: number;
+  /** Segundos objetivo por defecto en isométricos (ej. 15s) */
+  defaultIsometricSeconds: number;
+  /** Iniciar automáticamente el temporizador de descanso al marcar una serie */
+  autoStartRestTimer: boolean;
+}
+
 export interface UserProfile {
   sex: BiologicalSex;
   /** Fecha de nacimiento YYYY-MM-DD. La edad se calcula dinámicamente a partir de ella. */
@@ -333,6 +352,8 @@ export interface UserProfile {
   bodyFatPercent?: number;
   experienceLevel: ExperienceLevel;
   primaryGoal: PrimaryGoalType;
+  /** Preferencias predeterminadas de entrenamiento (series, repeticiones, descanso, RIR, etc.) */
+  workoutDefaults?: UserWorkoutDefaults;
   updatedAtIso: string;
 }
 

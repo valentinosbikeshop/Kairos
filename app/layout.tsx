@@ -1,27 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Cinzel, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-
-const cinzel = Cinzel({
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
-  variable: '--font-gothic',
-  display: 'swap',
-});
-
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-sans',
-  display: 'swap',
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['500', '600'],
-  variable: '--font-mono',
-  display: 'swap',
-});
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -58,10 +36,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="es"
-      className={`dark ${cinzel.variable} ${jakarta.variable} ${jetbrainsMono.variable}`}
-    >
+    <html lang="es" className="dark">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body className="font-sans antialiased bg-background text-brand selection:bg-gothic/30 selection:text-brand">
         {children}
       </body>

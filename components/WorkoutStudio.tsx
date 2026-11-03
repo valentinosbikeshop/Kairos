@@ -7,6 +7,10 @@ import { PolymorphicExerciseCard } from '@/components/PolymorphicExerciseCard';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 import { SoundSettingsButton } from '@/components/AudioMixerPanel';
 import { AppUpdateButton } from '@/components/AppUpdateManager';
+import {
+  PostWorkoutAiCalibrationModal,
+  CalibratedExerciseUpdate,
+} from '@/components/PostWorkoutAiCalibrationModal';
 import { resolveTodayRoutineStatus } from '@/lib/aiRoutineEngine';
 import { getContextualTips, getDailyMotivationalQuote } from '@/lib/knowledgeBase';
 import { formatMmSs, MODE_META } from '@/lib/formatters';
@@ -47,6 +51,7 @@ export function WorkoutStudio() {
     removeBlockFromWorkout,
     updateBlockTitle,
     removeTimerLog,
+    batchCalibrateExercises,
     finishAndAnalyzeWorkout,
     clearActiveWorkoutBlocks,
     setActiveTab,
@@ -55,6 +60,8 @@ export function WorkoutStudio() {
   const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   const [showAddModeSheet, setShowAddModeSheet] = useState(false);
+  const [showCalibrationModal, setShowCalibrationModal] = useState(false);
+  const [uncalibratedExercises, setUncalibratedExercises] = useState<any[]>([]);
   const [isTipExpanded, setIsTipExpanded] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [showTimerLogs, setShowTimerLogs] = useState(false);
@@ -147,13 +154,41 @@ export function WorkoutStudio() {
   }, [activeModes, activeWorkout.titlePlaceholder, todayRoutine.todayPlan]);
 
   const handleFinishSession = () => {
-    const res = finishAndAnalyzeWorkout();
-    if (!res.ok && res.reason === 'missing_title') {
-      titleInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setTimeout(() => {
-        titleInputRef.current?.focus();
-      }, 220);
+    const cleanTitle = activeWorkout.title.trim();
+    if (!cleanTitle) {
+      const res = finishAndAnalyzeWorkout();
+      if (!res.ok && res.reason === 'missing_title') {
+        titleInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => {
+          titleInputRef.current?.focus();
+        }, 220);
+      }
+      return;
     }
+
+    const allExercises = activeWorkout.blocks.flatMap((b) => b.exercises);
+    const uncalibrated = allExercises.filter(
+      (ex) =>
+        ex.catalogId.startsWith('custom') ||
+        ex.muscleGroup === 'Personalizado' ||
+        ex.muscleGroup === 'Músculo Principal'
+    );
+
+    if (uncalibrated.length > 0) {
+      setUncalibratedExercises(uncalibrated);
+      setShowCalibrationModal(true);
+      return;
+    }
+
+    finishAndAnalyzeWorkout();
+  };
+
+  const handleConfirmCalibration = (calibrations: CalibratedExerciseUpdate[]) => {
+    batchCalibrateExercises(calibrations);
+    setShowCalibrationModal(false);
+    setTimeout(() => {
+      finishAndAnalyzeWorkout();
+    }, 60);
   };
 
   // Only show Intervals and Isometric timers (never Rest timers)
@@ -688,6 +723,16 @@ export function WorkoutStudio() {
           defaultCardioDiscipline={pickerTarget.cardioDiscipline}
         />
       )}
+
+      <PostWorkoutAiCalibrationModal
+        isOpen={showCalibrationModal}
+        uncalibratedExercises={uncalibratedExercises}
+        onConfirm={handleConfirmCalibration}
+        onCancel={() => {
+          setShowCalibrationModal(false);
+          finishAndAnalyzeWorkout();
+        }}
+      />
     </div>
   );
 }

@@ -21,6 +21,7 @@ import {
   useHeartRateTelemetry,
 } from '@/components/HeartRateMonitorWidget';
 import { AppUpdateBanner } from '@/components/AppUpdateManager';
+import { FloatingAiCoachButton } from '@/components/FloatingAiCoachButton';
 import { AppTab } from '@/types/kairos';
 import { Activity, BookOpen, CalendarClock, Dumbbell, Timer } from 'lucide-react';
 
@@ -88,6 +89,7 @@ function KairosInnerWorkspace() {
 
             <FloatingHeartRateHUD />
             {activeTab !== 'timer' && <FloatingWorkoutTimerHUD />}
+            <FloatingAiCoachButton />
 
             <ImpactReportModal
               report={latestImpactReport}

@@ -34,6 +34,7 @@ import {
   cloneSetsFromGhost,
   getLastExerciseGhost,
 } from '@/lib/exerciseDatabase';
+import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
 import {
   ActiveWorkoutDraft,
   createEmptyWorkoutDraft,
@@ -133,6 +134,14 @@ interface KairosContextValue {
     blockId: string,
     exerciseId: string,
     updater: (ex: WorkoutExercise) => WorkoutExercise
+  ) => void;
+  batchCalibrateExercises: (
+    calibrations: {
+      exerciseId: string;
+      catalogId: string;
+      name: string;
+      muscleGroup: string;
+    }[]
   ) => void;
   removeTimerLog: (logId: string) => void;
   finishAndAnalyzeWorkout: () => { ok: boolean; reason?: 'missing_title' | 'empty_blocks' };
@@ -1042,23 +1051,55 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       const cleanName = name.trim();
       if (!cleanName) return;
 
+      const resolved = resolveExerciseIntelligently(cleanName, mode);
+
       const customItem: ExerciseCatalogItem = {
-        id: uid('custom'),
-        name: cleanName,
-        mode,
-        muscleGroup: options?.muscleGroup || 'Personalizado',
-        defaultRestSeconds: MODE_META[mode].defaultRest,
+        id: resolved.canonicalCatalogId,
+        name: resolved.canonicalName,
+        mode: resolved.mode || mode,
+        muscleGroup: options?.muscleGroup || resolved.muscleGroup,
+        defaultRestSeconds: resolved.defaultRestSeconds || MODE_META[mode].defaultRest,
         calisthenicsSubType:
           mode === 'calisthenics' ? options?.calisthenicsSubType ?? 'dynamic' : undefined,
         cardioDiscipline:
           mode === 'cardio' ? options?.cardioDiscipline ?? 'jumprope' : undefined,
-        isCustom: true,
+        isCustom: !resolved.isCanonicalMatch,
       };
 
       setCustomExercises((prev) => [customItem, ...prev]);
       addExerciseToBlock(blockId, customItem);
     },
     [addExerciseToBlock]
+  );
+
+  const batchCalibrateExercises = useCallback(
+    (
+      calibrations: {
+        exerciseId: string;
+        catalogId: string;
+        name: string;
+        muscleGroup: string;
+      }[]
+    ) => {
+      const map = new Map(calibrations.map((c) => [c.exerciseId, c]));
+      setActiveWorkout((prev) => ({
+        ...prev,
+        blocks: prev.blocks.map((blk) => ({
+          ...blk,
+          exercises: blk.exercises.map((ex) => {
+            const match = map.get(ex.id);
+            if (!match) return ex;
+            return {
+              ...ex,
+              catalogId: match.catalogId,
+              name: match.name,
+              muscleGroup: match.muscleGroup,
+            };
+          }),
+        })),
+      }));
+    },
+    []
   );
 
   const removeExerciseFromBlock = useCallback((blockId: string, exerciseId: string) => {
@@ -1336,6 +1377,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       createAndAddCustomExercise,
       removeExerciseFromBlock,
       mutateExercise,
+      batchCalibrateExercises,
       removeTimerLog,
       finishAndAnalyzeWorkout,
       clearActiveWorkoutBlocks,
@@ -1385,6 +1427,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       createAndAddCustomExercise,
       removeExerciseFromBlock,
       mutateExercise,
+      batchCalibrateExercises,
       removeTimerLog,
       finishAndAnalyzeWorkout,
       clearActiveWorkoutBlocks,

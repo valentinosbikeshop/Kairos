@@ -16,6 +16,7 @@ import {
   ORDERED_WEEKDAYS,
 } from '@/lib/aiRoutineEngine';
 import { BUILTIN_EXERCISES, smartSearchExercises } from '@/lib/exerciseDatabase';
+import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
 import { getResolvedWorkoutDefaults, MODE_META, toLocalDateKey, uid } from '@/lib/formatters';
 import {
   ArrowDown,
@@ -1310,21 +1311,22 @@ export function RoutineSetupConfigurator({
                             type="button"
                             onClick={() => {
                               const cleanCustom = exSearch.trim();
+                              const resolved = resolveExerciseIntelligently(cleanCustom, day.primaryMode);
                               const defs = getResolvedWorkoutDefaults(profile);
                               const hasCustomRest = Boolean(
                                 profile?.workoutDefaults?.defaultRestSeconds
                               );
                               const customPres: RoutineExercisePrescription = {
-                                catalogId: `custom_${uid('cx')}`,
-                                name: cleanCustom,
-                                mode: day.primaryMode,
+                                catalogId: resolved.canonicalCatalogId,
+                                name: resolved.canonicalName,
+                                mode: resolved.mode,
                                 sets: defs.defaultEffectiveSets,
                                 repsNum: defs.defaultReps,
                                 repRangeLabel: `${defs.defaultReps} reps`,
                                 rir: defs.defaultRir,
                                 restSeconds: hasCustomRest
                                   ? defs.defaultRestSeconds
-                                  : MODE_META[day.primaryMode].defaultRest,
+                                  : resolved.defaultRestSeconds || MODE_META[day.primaryMode].defaultRest,
                               };
                               setActiveManualList((prev) =>
                                 prev.map((d) =>

@@ -14,7 +14,8 @@ import {
   smartSearchExercises,
 } from '@/lib/exerciseDatabase';
 import { MODE_META } from '@/lib/formatters';
-import { Plus, Search, X } from 'lucide-react';
+import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
+import { Plus, Search, Sparkles, X } from 'lucide-react';
 
 interface ExercisePickerModalProps {
   isOpen: boolean;
@@ -65,15 +66,22 @@ export function ExercisePickerModal({
   const qNorm = normalizeSearchText(trimmedQuery);
   const exactExists = matches.some((m) => normalizeSearchText(m.item.name) === qNorm);
 
+  const aiResolved = useMemo(
+    () => (trimmedQuery.length >= 2 ? resolveExerciseIntelligently(trimmedQuery, mode, catalog) : null),
+    [trimmedQuery, mode, catalog]
+  );
+
   const handleSelect = (item: ExerciseCatalogItem) => {
     addExerciseToBlock(blockId, item);
     setQuery('');
     onClose();
   };
 
-  const handleCreateCustom = () => {
-    if (!trimmedQuery) return;
-    createAndAddCustomExercise(blockId, trimmedQuery, mode, {
+  const handleCreateCustom = (customName?: string, customMuscle?: string) => {
+    const finalName = customName || trimmedQuery;
+    if (!finalName) return;
+    createAndAddCustomExercise(blockId, finalName, mode, {
+      muscleGroup: customMuscle || aiResolved?.muscleGroup,
       calisthenicsSubType: customCalisthenicsType,
       cardioDiscipline: selectedDiscipline ?? defaultCardioDiscipline ?? 'jumprope',
     });
@@ -153,8 +161,8 @@ export function ExercisePickerModal({
             </div>
           )}
 
-          {trimmedQuery.length >= 2 && !exactExists && (
-            <div className="rounded-xl border border-stoneborder bg-background/80 p-2.5 space-y-2">
+          {trimmedQuery.length >= 2 && !exactExists && aiResolved && (
+            <div className="rounded-xl border border-stoneborder bg-background/90 p-2.5 space-y-2.5">
               {mode === 'calisthenics' && (
                 <div className="flex items-center gap-2 text-xs">
                   <button
@@ -182,14 +190,60 @@ export function ExercisePickerModal({
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={handleCreateCustom}
-                className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-gothic/40 bg-gothic/10 py-2 px-3 text-xs font-semibold text-brand"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {`Crear "${trimmedQuery}"`}
-              </button>
+              {aiResolved.isCanonicalMatch ? (
+                <div className="rounded-xl border border-gothic/40 bg-gothic/10 p-2 space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-gothic flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      Detectado por IA: {aiResolved.canonicalName}
+                    </span>
+                    <span className="text-[10px] text-brand-muted">{aiResolved.confidence}% certeza</span>
+                  </div>
+                  <p className="text-[10px] text-brand-muted">
+                    Grupo: <strong>{aiResolved.muscleGroup}</strong>
+                  </p>
+                  <div className="flex gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const item = catalog.find((c) => c.id === aiResolved.canonicalCatalogId);
+                        if (item) {
+                          handleSelect(item);
+                        } else {
+                          handleCreateCustom(aiResolved.canonicalName, aiResolved.muscleGroup);
+                        }
+                      }}
+                      className="flex-1 rounded-lg bg-gothic py-1.5 px-2 text-xs font-bold text-background uppercase tracking-wider hover:opacity-90 active:scale-95"
+                    >
+                      ✓ Usar Oficial
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateCustom(trimmedQuery, aiResolved.muscleGroup)}
+                      className="flex-1 rounded-lg border border-stoneborder bg-background py-1.5 px-2 text-[11px] font-medium text-brand-muted hover:text-brand active:scale-95"
+                    >
+                      Crear "{trimmedQuery}"
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] text-brand-muted">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3 text-gothic" />
+                      Grupo muscular sugerido: <strong className="text-brand">{aiResolved.muscleGroup}</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCreateCustom(trimmedQuery, aiResolved.muscleGroup)}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-gothic/40 bg-gothic/10 py-2 px-3 text-xs font-semibold text-brand active:scale-95"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {`Crear "${trimmedQuery}"`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

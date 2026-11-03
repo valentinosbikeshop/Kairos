@@ -8,6 +8,7 @@ import {
 } from '@/types/kairos';
 import { ORDERED_WEEKDAYS } from '@/lib/aiRoutineEngine';
 import { BUILTIN_EXERCISES, smartSearchExercises } from '@/lib/exerciseDatabase';
+import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
 import { toLocalDateKey, uid } from '@/lib/formatters';
 
 export interface RoutineExtractionResult {
@@ -127,55 +128,12 @@ function matchBestCatalogExercise(cleanExerciseName: string): {
   mode: TrainingMode;
   defaultRestSeconds: number;
 } {
-  const allModes: TrainingMode[] = ['hypertrophy', 'strength', 'calisthenics', 'hyrox', 'cardio'];
-  let topMatch: { id: string; name: string; mode: TrainingMode; rest: number; score: number } | null =
-    null;
-
-  for (const m of allModes) {
-    const matches = smartSearchExercises(BUILTIN_EXERCISES, m, cleanExerciseName);
-    if (matches.length > 0) {
-      const candidate = matches[0];
-      // Subtract the +25 same-mode bonus so we compare pure lexical/synonym relevance across modes
-      const rawRelevance = candidate.isCrossMode ? candidate.score : candidate.score - 25;
-      if (!topMatch || rawRelevance > topMatch.score) {
-        topMatch = {
-          id: candidate.item.id,
-          name: candidate.item.name,
-          mode: candidate.item.mode,
-          rest: candidate.item.defaultRestSeconds,
-          score: rawRelevance,
-        };
-      }
-    }
-  }
-
-  // High confidence match (direct match or strong synonym like "Press Francés" / "Press Militar")
-  if (topMatch && topMatch.score >= 92) {
-    return {
-      catalogId: topMatch.id,
-      displayName: topMatch.score >= 108 ? topMatch.name : capitalizeClean(cleanExerciseName),
-      mode: topMatch.mode,
-      defaultRestSeconds: topMatch.rest,
-    };
-  }
-
-  // Moderate match: link catalogId for tracking but preserve the coach's exact exercise wording
-  if (topMatch && topMatch.score >= 82) {
-    return {
-      catalogId: topMatch.id,
-      displayName: capitalizeClean(cleanExerciseName),
-      mode: topMatch.mode,
-      defaultRestSeconds: topMatch.rest,
-    };
-  }
-
-  // Custom exercise written by coach: preserve 100% faithfully
-  const inferredMode = inferModeFromRawName(cleanExerciseName);
+  const resolved = resolveExerciseIntelligently(cleanExerciseName);
   return {
-    catalogId: `custom_imp_${slugifyId(cleanExerciseName) || uid('cx')}`,
-    displayName: capitalizeClean(cleanExerciseName),
-    mode: inferredMode,
-    defaultRestSeconds: inferredMode === 'strength' ? 180 : inferredMode === 'cardio' ? 45 : 105,
+    catalogId: resolved.canonicalCatalogId,
+    displayName: resolved.canonicalName,
+    mode: resolved.mode,
+    defaultRestSeconds: resolved.defaultRestSeconds,
   };
 }
 

@@ -324,6 +324,9 @@ export interface AuthenticatedUser {
 
 export interface UserProfile {
   sex: BiologicalSex;
+  /** Fecha de nacimiento YYYY-MM-DD. La edad se calcula dinámicamente a partir de ella. */
+  birthDate?: string;
+  /** Edad registrada al guardar el perfil (respaldo para perfiles antiguos sin birthDate). */
   age: number;
   heightCm: number;
   weightKg: number;
@@ -331,6 +334,20 @@ export interface UserProfile {
   experienceLevel: ExperienceLevel;
   primaryGoal: PrimaryGoalType;
   updatedAtIso: string;
+}
+
+export interface IntervalPreset {
+  id: string;
+  name: string;
+  prepSeconds: number;
+  workSeconds: number;
+  restSeconds: number;
+  rounds: number;
+}
+
+export interface UserPreferences {
+  /** Bloques de intervalos personalizados por el usuario (sobrescriben los predeterminados por id). */
+  intervalPresets?: IntervalPreset[];
 }
 
 export type RoutineScheduleType = 'weekday' | 'cyclic';

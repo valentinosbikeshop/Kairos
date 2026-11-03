@@ -4,8 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useKairos } from '@/lib/kairosContext';
 import { computeExecutiveStats } from '@/lib/analyticsEngine';
 import { normalizeSearchText } from '@/lib/exerciseDatabase';
+import { getAgeFromBirthDate, getProfileAge } from '@/lib/formatters';
 import { VectorEvolutionChart } from '@/components/VectorEvolutionChart';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { calculateCardioZones, CardioZoneNumber } from '@/lib/cardioTelemetry';
+import { Heart, Search, SlidersHorizontal, X } from 'lucide-react';
 
 export function AnalyticsView() {
   const { sessions, evaluations, catalog, profile, saveUserProfile } = useKairos();
@@ -24,12 +26,14 @@ export function AnalyticsView() {
   const [fatInput, setFatInput] = useState(
     profile?.bodyFatPercent !== undefined ? String(profile.bodyFatPercent) : ''
   );
+  const [birthDateInput, setBirthDateInput] = useState(profile?.birthDate ?? '');
 
   useEffect(() => {
     if (profile) {
       setWeightInput(String(profile.weightKg));
       setHeightInput(String(profile.heightCm));
       setFatInput(profile.bodyFatPercent !== undefined ? String(profile.bodyFatPercent) : '');
+      setBirthDateInput(profile.birthDate ?? '');
     }
   }, [profile]);
 
@@ -48,6 +52,12 @@ export function AnalyticsView() {
         ? Math.round(profile.weightKg * (1 - profile.bodyFatPercent / 100) * 10) / 10
         : null;
     return { bmi, leanMassKg };
+  }, [profile]);
+
+  const userAge = useMemo(() => (profile ? getProfileAge(profile) : 25), [profile]);
+
+  const cardioZonesProfile = useMemo(() => {
+    return profile ? calculateCardioZones(profile, 60) : null;
   }, [profile]);
 
   const searchableIndexByCatalogId = useMemo(() => {
@@ -109,8 +119,11 @@ export function AnalyticsView() {
     const w = parseFloat(weightInput) || profile.weightKg;
     const h = parseFloat(heightInput) || profile.heightCm;
     const bf = fatInput.trim() ? parseFloat(fatInput) : undefined;
+    const nextAge = getAgeFromBirthDate(birthDateInput) ?? profile.age;
     await saveUserProfile({
       ...profile,
+      birthDate: birthDateInput.trim() || profile.birthDate,
+      age: nextAge,
       weightKg: Math.round(w * 10) / 10,
       heightCm: Math.round(h * 10) / 10,
       bodyFatPercent:
@@ -150,16 +163,16 @@ export function AnalyticsView() {
           </div>
 
           {!editingBody ? (
-            <div className="grid grid-cols-3 gap-3 pt-0.5">
+            <div className="grid grid-cols-4 gap-2 pt-0.5">
               <div>
                 <span className="block text-[11px] text-brand-muted">Peso</span>
-                <span className="text-base font-semibold tabular-nums text-brand">
+                <span className="text-sm font-semibold tabular-nums text-brand">
                   {profile.weightKg} kg
                 </span>
               </div>
               <div>
                 <span className="block text-[11px] text-brand-muted">Altura</span>
-                <span className="text-base font-semibold tabular-nums text-brand">
+                <span className="text-sm font-semibold tabular-nums text-brand">
                   {profile.heightCm} cm
                 </span>
               </div>
@@ -167,7 +180,7 @@ export function AnalyticsView() {
                 <span className="block text-[11px] text-brand-muted">
                   {somaticInsights?.leanMassKg ? 'Masa magra' : '% Grasa'}
                 </span>
-                <span className="text-base font-semibold tabular-nums text-brand">
+                <span className="text-sm font-semibold tabular-nums text-brand">
                   {somaticInsights?.leanMassKg
                     ? `${somaticInsights.leanMassKg} kg`
                     : profile.bodyFatPercent
@@ -175,10 +188,16 @@ export function AnalyticsView() {
                       : '—'}
                 </span>
               </div>
+              <div>
+                <span className="block text-[11px] text-brand-muted">Edad</span>
+                <span className="text-sm font-semibold tabular-nums text-brand">
+                  {getProfileAge(profile) ? `${getProfileAge(profile)} a.` : '—'}
+                </span>
+              </div>
             </div>
           ) : (
             <div className="space-y-3 pt-1 animate-fade-up">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
                   <label className="block text-[11px] text-brand-muted mb-1">Peso (kg)</label>
                   <input
@@ -212,6 +231,16 @@ export function AnalyticsView() {
                     className="w-full rounded-xl border border-stoneborder bg-background px-2.5 py-1.5 text-[16px] tabular-nums text-brand"
                   />
                 </div>
+                <div>
+                  <label className="block text-[11px] text-brand-muted mb-1">Nacimiento</label>
+                  <input
+                    type="date"
+                    value={birthDateInput}
+                    onChange={(e) => setBirthDateInput(e.target.value)}
+                    max={new Date().toISOString().split('T')[0]}
+                    className="w-full rounded-xl border border-stoneborder bg-background px-2 py-1.5 text-[14px] tabular-nums text-brand"
+                  />
+                </div>
               </div>
               <button
                 type="button"
@@ -228,6 +257,57 @@ export function AnalyticsView() {
               Grasa estimada: {profile.bodyFatPercent}% · IMC referencial: {somaticInsights?.bmi}
             </p>
           )}
+        </section>
+      )}
+
+      {/* ================= ZONAS DE ENTRENAMIENTO & SALUD CARDIOVASCULAR ================= */}
+      {cardioZonesProfile && (
+        <section className="rounded-2xl border border-stoneborder bg-surface p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Heart className="h-4 w-4 text-rose-500 fill-rose-500/20" />
+              <h2 className="font-gothic text-xs font-semibold uppercase tracking-widest text-brand">
+                Fases Cardíacas & Salud Metabólica
+              </h2>
+            </div>
+            <span className="font-mono text-xs font-bold text-brand">
+              {cardioZonesProfile.maxHeartRate} BPM máx
+            </span>
+          </div>
+
+          <p className="text-[11px] text-brand-muted leading-relaxed">
+            Frecuencia cardíaca máxima estimada mediante la fórmula de <strong>Tanaka</strong> (208 - 0.7 × edad) y rangos fisiológicos personalizados para tu edad actual ({userAge} años).
+          </p>
+
+          <div className="space-y-2 pt-1">
+            {([1, 2, 3, 4, 5] as CardioZoneNumber[]).map((zNum) => {
+              const zone = cardioZonesProfile.zones[zNum];
+              return (
+                <div
+                  key={zNum}
+                  className="rounded-xl border border-stoneborder/70 bg-background p-2.5 flex items-center justify-between gap-3 text-xs"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: zone.accentHex }}
+                      />
+                      <span className="font-medium text-brand">{zone.name}</span>
+                    </div>
+                    <p className="text-[10px] text-brand-muted">{zone.metabolicTarget}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-mono font-semibold text-brand tabular-nums">
+                      {zone.minBpm} - {zone.maxBpm}{' '}
+                      <span className="text-[10px] font-sans text-brand-muted font-normal">bpm</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-brand-muted">{zone.rangePct}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </section>
       )}
 

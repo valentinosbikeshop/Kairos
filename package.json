@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
-    "test:db": "tsx scripts/verify-production-db.ts"
+    "test:db": "npx tsx scripts/verify-production-db.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

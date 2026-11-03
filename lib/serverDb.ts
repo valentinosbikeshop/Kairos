@@ -468,6 +468,84 @@ export async function authenticateAccount(input: {
   return { ok: true, record };
 }
 
+export async function resetAccountPassword(input: {
+  username: string;
+  newPassword: string;
+}): Promise<{ ok: true; record: StoredAccountRecord } | { ok: false; error: string }> {
+  const cleanUsername = input.username.trim().toLowerCase();
+  const newPassword = input.newPassword;
+
+  if (cleanUsername.length < 3) {
+    return { ok: false, error: 'Ingresa un usuario o correo válido.' };
+  }
+  if (newPassword.length < 4) {
+    return { ok: false, error: 'La nueva contraseña debe tener al menos 4 caracteres.' };
+  }
+
+  const newSalt = crypto.randomBytes(16).toString('hex');
+  const newHash = hashPassword(newPassword, newSalt);
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data: existing, error: findError } = await supabase
+        .from('kairos_users')
+        .select('*')
+        .eq('username', cleanUsername)
+        .maybeSingle();
+
+      if (findError || !existing) {
+        return { ok: false, error: 'No existe ninguna cuenta registrada con ese usuario o correo.' };
+      }
+
+      const { data, error: updateError } = await supabase
+        .from('kairos_users')
+        .update({
+          password_salt: newSalt,
+          password_hash: newHash,
+        })
+        .eq('id', existing.id)
+        .select('*')
+        .maybeSingle();
+
+      if (updateError || !data) {
+        return { ok: false, error: 'Error al actualizar la contraseña en el servidor.' };
+      }
+
+      const record: StoredAccountRecord = {
+        id: data.id,
+        username: data.username,
+        displayName: data.display_name,
+        passwordSalt: data.password_salt,
+        passwordHash: data.password_hash,
+        createdAtIso: data.created_at,
+        onboardingCompleted: Boolean(data.onboarding_completed),
+        profile: data.profile ?? null,
+        routine: data.routine ?? null,
+        sessions: Array.isArray(data.sessions) ? data.sessions : [],
+        customExercises: Array.isArray(data.custom_exercises) ? data.custom_exercises : [],
+        audioSettings: data.audio_settings ?? defaultAudioSettings(),
+        activeWorkout: data.active_workout ?? createEmptyWorkoutDraft(),
+      };
+      return { ok: true, record };
+    } catch (err) {
+      console.error('[Supabase Reset Password Exception]:', err);
+    }
+  }
+
+  // Local JSON fallback
+  const db = await ensureLocalDbLoaded();
+  const idx = db.users.findIndex((u) => u.username === cleanUsername);
+  if (idx < 0) {
+    return { ok: false, error: 'No existe ninguna cuenta registrada con ese usuario o correo.' };
+  }
+
+  db.users[idx].passwordSalt = newSalt;
+  db.users[idx].passwordHash = newHash;
+  await saveLocalDbAtomic(db);
+  return { ok: true, record: db.users[idx] };
+}
+
 export async function getUserRecordById(userId: string): Promise<StoredAccountRecord | null> {
   const supabase = getSupabaseClient();
   if (supabase) {

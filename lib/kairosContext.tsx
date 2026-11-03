@@ -72,6 +72,10 @@ interface KairosContextValue {
     username: string;
     password: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  recoverUserPassword: (input: {
+    username: string;
+    newPassword: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   logoutUser: () => Promise<void>;
   saveUserProfile: (nextProfile: UserProfile) => Promise<void>;
   saveUserRoutine: (nextRoutine: UserRoutine | null, finishOnboarding?: boolean) => Promise<void>;
@@ -735,6 +739,37 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
     [applySnapshot]
   );
 
+  const recoverUserPassword = useCallback(
+    async (input: { username: string; newPassword: string }) => {
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        });
+        const data = (await res.json()) as {
+          ok: boolean;
+          error?: string;
+          token?: string;
+          snapshot?: PersistedUserDataSnapshot;
+        };
+        if (!res.ok || !data.ok || !data.snapshot) {
+          return { ok: false, error: data.error || 'No se pudo recuperar la cuenta.' };
+        }
+        if (data.token) {
+          setAuthToken(data.token);
+          saveAuthTokenToStorage(data.token);
+        }
+        applySnapshot(data.snapshot);
+        setActiveTab('workout');
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Sin conexión con el servidor.' };
+      }
+    },
+    [applySnapshot]
+  );
+
   const logoutUser = useCallback(async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
@@ -1253,6 +1288,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       routine,
       registerUser,
       loginUser,
+      recoverUserPassword,
       logoutUser,
       saveUserProfile,
       saveUserRoutine,
@@ -1304,6 +1340,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       routine,
       registerUser,
       loginUser,
+      recoverUserPassword,
       logoutUser,
       saveUserProfile,
       saveUserRoutine,

@@ -37,6 +37,13 @@ function KairosInnerWorkspace() {
 
   const { snapshot } = useTimerEngine();
 
+  // Reset scroll to top on tab change so header is never cut off
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
+  }, [activeTab]);
+
   const tabs: {
     id: AppTab;
     label: string;

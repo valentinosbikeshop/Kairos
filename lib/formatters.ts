@@ -201,6 +201,38 @@ export function formatFullDateEs(isoString: string): string {
   });
 }
 
+/**
+ * Calcula la edad exacta en años cumplidos a partir de una fecha YYYY-MM-DD.
+ * Devuelve null si la fecha es inválida o futura.
+ */
+export function getAgeFromBirthDate(birthDate: string | undefined | null, now = new Date()): number | null {
+  if (!birthDate || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return null;
+  const [y, m, d] = birthDate.split('-').map((v) => parseInt(v, 10));
+  const birth = new Date(y, m - 1, d);
+  if (
+    Number.isNaN(birth.getTime()) ||
+    birth.getFullYear() !== y ||
+    birth.getMonth() !== m - 1 ||
+    birth.getDate() !== d ||
+    birth.getTime() > now.getTime()
+  ) {
+    return null;
+  }
+  let age = now.getFullYear() - y;
+  const hadBirthdayThisYear =
+    now.getMonth() > m - 1 || (now.getMonth() === m - 1 && now.getDate() >= d);
+  if (!hadBirthdayThisYear) age -= 1;
+  return age;
+}
+
+/** Edad vigente del perfil: usa la fecha de nacimiento si existe (se actualiza sola cada cumpleaños). */
+export function getProfileAge(profile: { birthDate?: string; age?: number } | null | undefined): number | null {
+  if (!profile) return null;
+  const fromBirth = getAgeFromBirthDate(profile.birthDate);
+  if (fromBirth !== null) return fromBirth;
+  return typeof profile.age === 'number' && profile.age > 0 ? profile.age : null;
+}
+
 export function toLocalDateKey(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
     d.getDate()

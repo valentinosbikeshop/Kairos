@@ -845,13 +845,15 @@ export function FloatingWorkoutTimerHUD() {
               </div>
             )}
 
-            {/* Cancel Interval Double Confirmation in Floating HUD */}
-            {snapshot.isActive && snapshot.kind === 'intervals' && (
+            {/* Cancel Interval / Isometric Double Confirmation in Floating HUD */}
+            {snapshot.isActive && (snapshot.kind === 'intervals' || snapshot.kind === 'isometric') && (
               <div className="pt-0.5">
                 {hudConfirmCancel ? (
                   <div className="rounded-xl border border-status-regress/50 bg-status-regress/15 p-2 flex items-center justify-between gap-2 animate-fade-up">
                     <span className="text-[11px] font-medium text-brand">
-                      ¿Descartar intervalo actual?
+                      {snapshot.kind === 'isometric'
+                        ? '¿Descartar isometría actual?'
+                        : '¿Descartar intervalo actual?'}
                     </span>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
@@ -880,7 +882,11 @@ export function FloatingWorkoutTimerHUD() {
                     className="w-full flex items-center justify-center gap-1 rounded-xl border border-status-regress/35 bg-status-regress/10 py-1.5 text-[11px] font-medium text-brand hover:bg-status-regress/20 active:scale-98"
                   >
                     <XCircle className="h-3.5 w-3.5 text-status-regress" />
-                    <span>Cancelar intervalo en curso</span>
+                    <span>
+                      {snapshot.kind === 'isometric'
+                        ? 'Cancelar isometría en curso'
+                        : 'Cancelar intervalo en curso'}
+                    </span>
                   </button>
                 )}
               </div>

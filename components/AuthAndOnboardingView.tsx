@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useKairos } from '@/lib/kairosContext';
 import {
   BiologicalSex,
@@ -8,8 +8,9 @@ import {
   PrimaryGoalType,
   UserProfile,
 } from '@/types/kairos';
+import { getAgeFromBirthDate } from '@/lib/formatters';
 import { RoutineSetupConfigurator } from '@/components/RoutineBuilderAndRationale';
-import { ArrowRight, Lock, ShieldCheck, User } from 'lucide-react';
+import { ArrowLeft, ArrowRight, KeyRound, Lock, ShieldCheck, User } from 'lucide-react';
 
 export function AuthAndOnboardingView() {
   const {
@@ -17,23 +18,25 @@ export function AuthAndOnboardingView() {
     profile,
     registerUser,
     loginUser,
+    recoverUserPassword,
     saveUserProfile,
     saveUserRoutine,
     completeOnboarding,
   } = useKairos();
 
   // Auth Gate State
-  const [authMode, setAuthMode] = useState<'register' | 'login'>('register');
+  const [authMode, setAuthMode] = useState<'register' | 'login' | 'recover'>('register');
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [submittingAuth, setSubmittingAuth] = useState(false);
 
   // Onboarding Step State (Step 1: Body Data -> Step 2: Routine Setup)
   const [onboardingStep, setOnboardingStep] = useState<1 | 2>(() => (profile ? 2 : 1));
   const [sex, setSex] = useState<BiologicalSex>(profile?.sex ?? 'male');
-  const [age, setAge] = useState<string>(profile?.age ? String(profile.age) : '24');
+  const [birthDate, setBirthDate] = useState<string>(profile?.birthDate ?? '2000-01-01');
   const [heightCm, setHeightCm] = useState<string>(
     profile?.heightCm ? String(profile.heightCm) : '175'
   );
@@ -51,6 +54,8 @@ export function AuthAndOnboardingView() {
   );
   const [profileError, setProfileError] = useState<string | null>(null);
 
+  const calculatedAge = useMemo(() => getAgeFromBirthDate(birthDate), [birthDate]);
+
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -67,10 +72,21 @@ export function AuthAndOnboardingView() {
       } else {
         setOnboardingStep(1);
       }
-    } else {
+    } else if (authMode === 'login') {
       const res = await loginUser({ username, password });
       if (!res.ok) {
         setAuthError(res.error || 'Credenciales incorrectas.');
+      }
+    } else {
+      // Recover Password Mode
+      if (password !== confirmPassword) {
+        setAuthError('Las contraseñas no coinciden.');
+        setSubmittingAuth(false);
+        return;
+      }
+      const res = await recoverUserPassword({ username, newPassword: password });
+      if (!res.ok) {
+        setAuthError(res.error || 'No se pudo recuperar la cuenta.');
       }
     }
     setSubmittingAuth(false);
@@ -80,8 +96,12 @@ export function AuthAndOnboardingView() {
     e.preventDefault();
     const h = parseFloat(heightCm);
     const w = parseFloat(weightKg);
-    const a = parseInt(age, 10) || 25;
     const bf = bodyFat.trim() ? parseFloat(bodyFat) : undefined;
+
+    if (!birthDate || calculatedAge === null || calculatedAge < 10 || calculatedAge > 105) {
+      setProfileError('Ingresa una fecha de nacimiento válida.');
+      return;
+    }
 
     if (!h || h < 110 || h > 240 || !w || w < 30 || w > 260) {
       setProfileError('Ingresa una altura (cm) y un peso (kg) válidos.');
@@ -91,7 +111,8 @@ export function AuthAndOnboardingView() {
     setProfileError(null);
     const nextProfile: UserProfile = {
       sex,
-      age: Math.max(13, Math.min(95, a)),
+      birthDate,
+      age: calculatedAge,
       heightCm: Math.round(h * 10) / 10,
       weightKg: Math.round(w * 10) / 10,
       bodyFatPercent:
@@ -124,36 +145,57 @@ export function AuthAndOnboardingView() {
 
         {/* Auth Switcher */}
         <div className="rounded-2xl border border-stoneborder bg-surface p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-background p-1 border border-stoneborder">
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode('register');
-                setAuthError(null);
-              }}
-              className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
-                authMode === 'register'
-                  ? 'bg-elevated text-brand border border-stoneborder'
-                  : 'text-brand-muted'
-              }`}
-            >
-              Crear Cuenta
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode('login');
-                setAuthError(null);
-              }}
-              className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
-                authMode === 'login'
-                  ? 'bg-elevated text-brand border border-stoneborder'
-                  : 'text-brand-muted'
-              }`}
-            >
-              Iniciar Sesión
-            </button>
-          </div>
+          {authMode === 'recover' ? (
+            <div className="flex items-center justify-between pb-1 border-b border-stoneborder">
+              <div className="flex items-center gap-2 text-gothic">
+                <KeyRound className="h-4 w-4" />
+                <span className="font-gothic text-xs font-semibold uppercase tracking-wider text-brand">
+                  Recuperar Contraseña
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setAuthError(null);
+                }}
+                className="text-xs text-brand-muted hover:text-brand"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-background p-1 border border-stoneborder">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register');
+                  setAuthError(null);
+                }}
+                className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
+                  authMode === 'register'
+                    ? 'bg-elevated text-brand border border-stoneborder'
+                    : 'text-brand-muted'
+                }`}
+              >
+                Crear Cuenta
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setAuthError(null);
+                }}
+                className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
+                  authMode === 'login'
+                    ? 'bg-elevated text-brand border border-stoneborder'
+                    : 'text-brand-muted'
+                }`}
+              >
+                Iniciar Sesión
+              </button>
+            </div>
+          )}
 
           <form onSubmit={handleAuthSubmit} className="space-y-3.5">
             {authMode === 'register' && (
@@ -188,7 +230,9 @@ export function AuthAndOnboardingView() {
             </div>
 
             <div>
-              <label className="block text-xs text-brand-muted mb-1">Contraseña</label>
+              <label className="block text-xs text-brand-muted mb-1">
+                {authMode === 'recover' ? 'Nueva contraseña' : 'Contraseña'}
+              </label>
               <div className="relative">
                 <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-subtle" />
                 <input
@@ -201,6 +245,38 @@ export function AuthAndOnboardingView() {
                 />
               </div>
             </div>
+
+            {authMode === 'login' && (
+              <div className="flex justify-end pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('recover');
+                    setAuthError(null);
+                  }}
+                  className="text-[11px] text-gothic hover:underline cursor-pointer"
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+            )}
+
+            {authMode === 'recover' && (
+              <div>
+                <label className="block text-xs text-brand-muted mb-1">Confirmar nueva contraseña</label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-subtle" />
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repite la contraseña"
+                    className="w-full rounded-xl border border-stoneborder bg-background py-2.5 pl-10 pr-3.5 text-[16px] text-brand placeholder-brand-subtle focus:border-gothic focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
 
             {authError && (
               <p className="rounded-xl border border-status-regress/40 bg-status-regress/10 px-3 py-2 text-xs text-brand">
@@ -218,10 +294,26 @@ export function AuthAndOnboardingView() {
                   ? 'Verificando...'
                   : authMode === 'register'
                     ? 'Crear Cuenta desde Cero'
-                    : 'Entrar a mi Cuenta'}
+                    : authMode === 'recover'
+                      ? 'Restablecer Contraseña'
+                      : 'Entrar a mi Cuenta'}
               </span>
               <ArrowRight className="h-4 w-4" />
             </button>
+
+            {authMode === 'recover' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setAuthError(null);
+                }}
+                className="w-full flex items-center justify-center gap-1 text-[11px] text-brand-muted hover:text-brand pt-1"
+              >
+                <ArrowLeft className="h-3 w-3" />
+                <span>Volver a Iniciar Sesión</span>
+              </button>
+            )}
           </form>
         </div>
 
@@ -299,14 +391,21 @@ export function AuthAndOnboardingView() {
               </div>
 
               <div>
-                <label className="block text-xs text-brand-muted mb-1.5">Edad (años)</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs text-brand-muted">Fecha nacimiento</label>
+                  {calculatedAge !== null && (
+                    <span className="text-[11px] font-mono text-gothic font-medium">
+                      {calculatedAge} años
+                    </span>
+                  )}
+                </div>
                 <input
-                  type="number"
-                  inputMode="numeric"
+                  type="date"
                   required
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  className="w-full rounded-xl border border-stoneborder bg-background px-3 py-2 text-[16px] tabular-nums text-brand focus:border-gothic focus:outline-none"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="w-full rounded-xl border border-stoneborder bg-background px-2.5 py-2 text-[15px] tabular-nums text-brand focus:border-gothic focus:outline-none"
                 />
               </div>
             </div>

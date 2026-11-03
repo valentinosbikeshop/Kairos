@@ -430,6 +430,39 @@ export function RoutineSetupConfigurator({
     );
   };
 
+  const moveDay = (index: number, direction: -1 | 1) => {
+    const targetIdx = index + direction;
+    if (targetIdx < 0 || targetIdx >= activeManualList.length) return;
+    setActiveManualList((prev) => {
+      const copy = [...prev];
+      const [item] = copy.splice(index, 1);
+      copy.splice(targetIdx, 0, item);
+      return copy;
+    });
+  };
+
+  const insertDayAt = (index: number, kind: 'rest' | 'cardio' | 'workout') => {
+    const newDay: RoutineDayPlan = {
+      id: uid('rday'),
+      label: `Día ${index + 1}`,
+      isRestDay: kind === 'rest',
+      focusTitle:
+        kind === 'rest'
+          ? 'Descanso y Recuperación'
+          : kind === 'cardio'
+            ? 'Cardio y Resistencia'
+            : 'Nueva Sesión',
+      primaryMode: kind === 'cardio' ? 'cardio' : 'hypertrophy',
+      estimatedMinutes: kind === 'rest' ? 0 : 60,
+      exercises: [],
+    };
+    setActiveManualList((prev) => {
+      const copy = [...prev];
+      copy.splice(index, 0, newDay);
+      return copy;
+    });
+  };
+
   const handleSaveManual = async () => {
     const routineObj: UserRoutine = {
       id: existingRoutine?.id ?? uid('rtn'),
@@ -905,74 +938,145 @@ export function RoutineSetupConfigurator({
 
         {/* Days list */}
         <div className="space-y-2 pt-0.5">
-          {activeManualList.map((day) => {
+          {activeManualList.map((day, dayIndex) => {
+            const reorderControls = (
+              <div className="flex items-center gap-0.5 mr-1">
+                <button
+                  type="button"
+                  disabled={dayIndex === 0}
+                  onClick={() => moveDay(dayIndex, -1)}
+                  title="Mover día hacia arriba"
+                  className="p-1 rounded text-brand-subtle hover:text-brand disabled:opacity-20 active:scale-95 transition-colors"
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={dayIndex === activeManualList.length - 1}
+                  onClick={() => moveDay(dayIndex, 1)}
+                  title="Mover día hacia abajo"
+                  className="p-1 rounded text-brand-subtle hover:text-brand disabled:opacity-20 active:scale-95 transition-colors"
+                >
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            );
+
+            const intercalarControls = (
+              <div className="flex items-center justify-center gap-1.5 py-1 text-[11px] text-brand-subtle">
+                <span className="h-[1px] flex-1 bg-stoneborder/40" />
+                <span className="text-[10px] text-brand-muted">Intercalar:</span>
+                <button
+                  type="button"
+                  onClick={() => insertDayAt(dayIndex + 1, 'rest')}
+                  className="rounded-lg border border-stoneborder/70 bg-background/80 px-2 py-0.5 text-[10px] text-brand-muted hover:text-brand hover:border-gothic/50 active:scale-95 transition-colors"
+                >
+                  + Descanso
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertDayAt(dayIndex + 1, 'cardio')}
+                  className="rounded-lg border border-stoneborder/70 bg-background/80 px-2 py-0.5 text-[10px] text-brand-muted hover:text-brand hover:border-gothic/50 active:scale-95 transition-colors"
+                >
+                  + Cardio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertDayAt(dayIndex + 1, 'workout')}
+                  className="rounded-lg border border-stoneborder/70 bg-background/80 px-2 py-0.5 text-[10px] text-brand-muted hover:text-brand hover:border-gothic/50 active:scale-95 transition-colors"
+                >
+                  + Sesión
+                </button>
+                <span className="h-[1px] flex-1 bg-stoneborder/40" />
+              </div>
+            );
+
             if (day.isRestDay) {
               return (
-                <div
-                  key={day.id}
-                  className="flex items-center justify-between gap-2 rounded-xl border border-stoneborder/60 bg-background/50 px-3 py-2 text-xs"
-                >
-                  <span className="font-medium text-brand-muted">{day.label} · Descanso</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveManualList((prev) =>
-                        prev.map((d) =>
-                          d.id === day.id
-                            ? { ...d, isRestDay: false, focusTitle: 'Entrenamiento' }
-                            : d
-                        )
-                      )
-                    }
-                    className="rounded-lg border border-stoneborder bg-surface px-2.5 py-1 text-[11px] text-brand-muted hover:text-brand"
-                  >
-                    Activar día
-                  </button>
-                </div>
+                <React.Fragment key={day.id}>
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-stoneborder/60 bg-background/50 px-3 py-2 text-xs">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {reorderControls}
+                      <span className="font-medium text-brand-muted truncate">
+                        {day.label} · Descanso
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActiveManualList((prev) =>
+                            prev.map((d) =>
+                              d.id === day.id
+                                ? { ...d, isRestDay: false, focusTitle: 'Entrenamiento' }
+                                : d
+                            )
+                          )
+                        }
+                        className="rounded-lg border border-stoneborder bg-surface px-2.5 py-1 text-[11px] text-brand-muted hover:text-brand"
+                      >
+                        Activar día
+                      </button>
+                      {manualType === 'cyclic' && activeManualList.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveManualList((prev) => prev.filter((d) => d.id !== day.id))
+                          }
+                          className="p-1 text-brand-subtle hover:text-status-regress"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {intercalarControls}
+                </React.Fragment>
               );
             }
 
             return (
-              <div
-                key={day.id}
-                className="rounded-xl border border-stoneborder bg-background/80 p-3 space-y-2.5"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-brand">{day.label}</span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setActiveManualList((prev) =>
-                          prev.map((d) =>
-                            d.id === day.id
-                              ? {
-                                  ...d,
-                                  isRestDay: true,
-                                  focusTitle: 'Descanso',
-                                }
-                              : d
-                          )
-                        )
-                      }
-                      className="rounded-lg border border-stoneborder px-2 py-0.5 text-[11px] text-brand-muted hover:text-brand"
-                    >
-                      Pausar a descanso
-                    </button>
-
-                    {manualType === 'cyclic' && activeManualList.length > 1 && (
+              <React.Fragment key={day.id}>
+                <div className="rounded-xl border border-stoneborder bg-background/80 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1">
+                      {reorderControls}
+                      <span className="text-xs font-semibold text-brand">{day.label}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() =>
-                          setActiveManualList((prev) => prev.filter((d) => d.id !== day.id))
+                          setActiveManualList((prev) =>
+                            prev.map((d) =>
+                              d.id === day.id
+                                ? {
+                                    ...d,
+                                    isRestDay: true,
+                                    focusTitle: 'Descanso',
+                                  }
+                                : d
+                            )
+                          )
                         }
-                        className="p-1 text-brand-subtle hover:text-status-regress"
+                        className="rounded-lg border border-stoneborder px-2 py-0.5 text-[11px] text-brand-muted hover:text-brand"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        Pausar a descanso
                       </button>
-                    )}
+
+                      {manualType === 'cyclic' && activeManualList.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveManualList((prev) => prev.filter((d) => d.id !== day.id))
+                          }
+                          className="p-1 text-brand-subtle hover:text-status-regress"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
 
                 <div className="grid grid-cols-[1fr_112px] gap-2">
                   <input
@@ -1281,7 +1385,9 @@ export function RoutineSetupConfigurator({
                       Añadir ejercicio en orden a este día
                     </button>
                   )}
-              </div>
+                </div>
+                {intercalarControls}
+              </React.Fragment>
             );
           })}
         </div>

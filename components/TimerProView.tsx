@@ -6,18 +6,38 @@ import { SoundSettingsButton } from '@/components/AudioMixerPanel';
 import { getDailyMotivationalQuote } from '@/lib/knowledgeBase';
 import { formatMmSs, formatTimerMs } from '@/lib/formatters';
 import { TimerKind } from '@/types/kairos';
+import { HeartRateMonitorWidget } from '@/components/HeartRateMonitorWidget';
 import {
   AlertTriangle,
+  Check,
   FastForward,
   Flame,
   Pause,
   Play,
   Repeat,
   RotateCcw,
+  Sliders,
   Square,
   Timer,
+  X,
   XCircle,
 } from 'lucide-react';
+
+interface IntervalPresetItem {
+  id: string;
+  name: string;
+  prep: number;
+  work: number;
+  rest: number;
+  rnd: number;
+}
+
+const DEFAULT_INTERVAL_PRESETS: IntervalPresetItem[] = [
+  { id: 'tabata', name: 'Tabata', prep: 5, work: 20, rest: 10, rnd: 8 },
+  { id: 'emom', name: 'EMOM 45/15', prep: 5, work: 45, rest: 15, rnd: 10 },
+  { id: 'cuerda', name: 'Cuerda', prep: 5, work: 90, rest: 30, rnd: 6 },
+  { id: 'rounds3m', name: 'Rounds 3m', prep: 5, work: 180, rest: 60, rnd: 4 },
+];
 
 export function TimerProView() {
   const {
@@ -37,11 +57,24 @@ export function TimerProView() {
   const [customRestSec, setCustomRestSec] = useState(90);
 
   // Intervals
+  const [intervalPresets, setIntervalPresets] = useState<IntervalPresetItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('kairos_interval_presets_v1');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return DEFAULT_INTERVAL_PRESETS;
+  });
+
+  const [editingPreset, setEditingPreset] = useState<IntervalPresetItem | null>(null);
+
   const [prepSec, setPrepSec] = useState(5);
   const [workSec, setWorkSec] = useState(45);
   const [intervalRestSec, setIntervalRestSec] = useState(15);
   const [rounds, setRounds] = useState(8);
   const [confirmCancelInterval, setConfirmCancelInterval] = useState(false);
+  const [confirmCancelIsometric, setConfirmCancelIsometric] = useState(false);
 
   // Isometric
   const [isoPrepSec, setIsoPrepSec] = useState(5);
@@ -53,8 +86,26 @@ export function TimerProView() {
   useEffect(() => {
     if (!snapshot.isActive) {
       setConfirmCancelInterval(false);
+      setConfirmCancelIsometric(false);
     }
   }, [snapshot.isActive]);
+
+  const handleSaveEditedPreset = (updated: IntervalPresetItem) => {
+    setIntervalPresets((prev) => {
+      const next = prev.map((p) => (p.id === updated.id ? updated : p));
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('kairos_interval_presets_v1', JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+    setPrepSec(updated.prep);
+    setWorkSec(updated.work);
+    setIntervalRestSec(updated.rest);
+    setRounds(updated.rnd);
+    setEditingPreset(null);
+  };
 
   const ringRadius = 110;
   const ringCircumference = 2 * Math.PI * ringRadius;
@@ -309,6 +360,52 @@ export function TimerProView() {
                 )}
               </div>
             )}
+            {/* Cancel Running Isometric with Double Confirmation */}
+            {snapshot.kind === 'isometric' && (
+              <div className="pt-1">
+                {confirmCancelIsometric ? (
+                  <div className="rounded-xl border border-status-regress/50 bg-status-regress/15 p-3 space-y-2 animate-fade-up">
+                    <div className="flex items-center gap-2 text-status-regress">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span className="text-xs font-semibold text-brand">
+                        ¿Seguro que deseas cancelar esta isometría?
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-brand-muted leading-tight">
+                      El temporizador se detendrá y esta isometría no se registrará en la sesión del día.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmCancelIsometric(false)}
+                        className="rounded-lg border border-stoneborder bg-background py-1.5 text-xs font-medium text-brand-muted hover:text-brand"
+                      >
+                        Continuar isometría
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cancelTimer();
+                          setConfirmCancelIsometric(false);
+                        }}
+                        className="rounded-lg bg-status-regress py-1.5 text-xs font-bold text-white shadow active:scale-95"
+                      >
+                        Sí, cancelar ahora
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmCancelIsometric(true)}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-status-regress/35 bg-status-regress/10 py-2.5 text-xs font-medium text-brand hover:border-status-regress/60 hover:bg-status-regress/15 active:scale-98 transition-colors"
+                  >
+                    <XCircle className="h-4 w-4 text-status-regress" />
+                    <span>Cancelar isometría en curso</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -362,35 +459,43 @@ export function TimerProView() {
       {labTab === 'intervals' && (
         <div className="rounded-2xl border border-stoneborder bg-surface p-4 space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            {[
-              { name: 'Tabata', prep: 5, work: 20, rest: 10, rnd: 8 },
-              { name: 'EMOM 45/15', prep: 5, work: 45, rest: 15, rnd: 10 },
-              { name: 'Cuerda', prep: 5, work: 90, rest: 30, rnd: 6 },
-              { name: 'Rounds 3m', prep: 5, work: 180, rest: 60, rnd: 4 },
-            ].map((pr) => (
-              <button
-                key={pr.name}
-                type="button"
-                onClick={() => {
-                  setPrepSec(pr.prep);
-                  setWorkSec(pr.work);
-                  setIntervalRestSec(pr.rest);
-                  setRounds(pr.rnd);
-                  startIntervalTimer({
-                    prepSeconds: pr.prep,
-                    workSeconds: pr.work,
-                    restSeconds: pr.rest,
-                    rounds: pr.rnd,
-                    label: pr.name,
-                  });
-                }}
-                className="rounded-xl border border-stoneborder bg-background p-2.5 text-left hover:border-gothic/60 active:scale-95"
-              >
-                <div className="text-xs font-semibold text-brand">{pr.name}</div>
-                <div className="text-[11px] text-brand-muted tabular-nums">
-                  {pr.work}s / {pr.rest}s × {pr.rnd}
-                </div>
-              </button>
+            {intervalPresets.map((pr) => (
+              <div key={pr.id} className="relative group">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPrepSec(pr.prep);
+                    setWorkSec(pr.work);
+                    setIntervalRestSec(pr.rest);
+                    setRounds(pr.rnd);
+                    startIntervalTimer({
+                      prepSeconds: pr.prep,
+                      workSeconds: pr.work,
+                      restSeconds: pr.rest,
+                      rounds: pr.rnd,
+                      label: pr.name,
+                    });
+                  }}
+                  className="w-full rounded-xl border border-stoneborder bg-background p-2.5 text-left hover:border-gothic/60 active:scale-95 transition-colors pr-7"
+                >
+                  <div className="text-xs font-semibold text-brand truncate">{pr.name}</div>
+                  <div className="text-[11px] text-brand-muted tabular-nums">
+                    {pr.work}s / {pr.rest}s × {pr.rnd}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingPreset(pr);
+                  }}
+                  title="Editar y guardar como predeterminado"
+                  aria-label={`Editar preset ${pr.name}`}
+                  className="absolute top-1.5 right-1.5 p-1 rounded-lg text-brand-subtle hover:text-brand hover:bg-surface border border-transparent hover:border-stoneborder transition-colors active:scale-95"
+                >
+                  <Sliders className="h-3 w-3" />
+                </button>
+              </div>
             ))}
           </div>
 
@@ -532,6 +637,9 @@ export function TimerProView() {
         </div>
       )}
 
+      {/* ================= TELEMETRÍA CARDÍACA EN VIVO & GASTO CALÓRICO ================= */}
+      <HeartRateMonitorWidget />
+
       {/* ================= FRASE MOTIVADORA DEL DÍA ================= */}
       <div className="rounded-2xl border border-stoneborder bg-surface px-5 py-5 text-center space-y-2.5">
         <div className="flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.25em] text-gothic">
@@ -542,6 +650,133 @@ export function TimerProView() {
         <p className="font-gothic text-sm text-brand leading-relaxed">
           {dailyQuote.text}
         </p>
+      </div>
+
+      {editingPreset && (
+        <EditIntervalPresetModal
+          preset={editingPreset}
+          onClose={() => setEditingPreset(null)}
+          onSave={handleSaveEditedPreset}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditIntervalPresetModal({
+  preset,
+  onClose,
+  onSave,
+}: {
+  preset: IntervalPresetItem;
+  onClose: () => void;
+  onSave: (updated: IntervalPresetItem) => void;
+}) {
+  const [name, setName] = useState(preset.name);
+  const [prep, setPrep] = useState(preset.prep);
+  const [work, setWork] = useState(preset.work);
+  const [rest, setRest] = useState(preset.rest);
+  const [rnd, setRnd] = useState(preset.rnd);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-4">
+      <div className="w-full max-w-[430px] rounded-t-3xl sm:rounded-3xl border border-stoneborder bg-surface p-5 space-y-4 animate-fade-up pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-gothic">
+            <Sliders className="h-4 w-4" />
+            <h3 className="font-gothic text-sm font-semibold text-brand">
+              Editar Bloque Predeterminado
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-stoneborder bg-background p-1.5 text-brand-muted hover:text-brand"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-brand-muted mb-1">Nombre del bloque</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-xl border border-stoneborder bg-background px-3 py-2 text-[16px] text-brand focus:border-gothic focus:outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-4 gap-2">
+            <div>
+              <label className="block text-[11px] text-brand-muted mb-1 text-center">Prep (s)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={prep}
+                onChange={(e) =>
+                  setPrep(Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)))
+                }
+                className="w-full rounded-xl border border-stoneborder bg-background px-1 py-2 text-center text-[16px] tabular-nums text-brand"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-brand-muted mb-1 text-center">Trabajo (s)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={work}
+                onChange={(e) =>
+                  setWork(Math.max(3, Math.min(600, parseInt(e.target.value, 10) || 3)))
+                }
+                className="w-full rounded-xl border border-stoneborder bg-background px-1 py-2 text-center text-[16px] tabular-nums text-brand"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-brand-muted mb-1 text-center">Descanso (s)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={rest}
+                onChange={(e) =>
+                  setRest(Math.max(0, Math.min(600, parseInt(e.target.value, 10) || 0)))
+                }
+                className="w-full rounded-xl border border-stoneborder bg-background px-1 py-2 text-center text-[16px] tabular-nums text-brand"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-brand-muted mb-1 text-center">Rondas</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={rnd}
+                onChange={(e) =>
+                  setRnd(Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)))
+                }
+                className="w-full rounded-xl border border-stoneborder bg-background px-1 py-2 text-center text-[16px] tabular-nums text-brand"
+              />
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() =>
+            onSave({
+              ...preset,
+              name: name.trim() || preset.name,
+              prep,
+              work,
+              rest,
+              rnd,
+            })
+          }
+          className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand py-3 text-xs font-bold uppercase tracking-wider text-background active:scale-[0.99]"
+        >
+          <Check className="h-4 w-4" />
+          Guardar como Predeterminado
+        </button>
       </div>
     </div>
   );

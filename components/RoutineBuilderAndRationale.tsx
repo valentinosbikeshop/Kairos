@@ -17,6 +17,7 @@ import {
 } from '@/lib/aiRoutineEngine';
 import { BUILTIN_EXERCISES, smartSearchExercises } from '@/lib/exerciseDatabase';
 import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
+import { AiCoachModal } from '@/components/AiCoachModal';
 import { getResolvedWorkoutDefaults, MODE_META, toLocalDateKey, uid } from '@/lib/formatters';
 import {
   ArrowDown,
@@ -1518,6 +1519,7 @@ export function RoutineModalsHost({
   onSaveRoutine: (r: UserRoutine) => Promise<void> | void;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [aiCoachOpen, setAiCoachOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -1585,9 +1587,20 @@ export function RoutineModalsHost({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between border-b border-stoneborder p-4">
-            <h3 className="font-gothic text-sm font-semibold tracking-wide text-brand">
-              Gestionar Mi Rutina
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-gothic text-sm font-semibold tracking-wide text-brand">
+                Gestionar Mi Rutina
+              </h3>
+              <button
+                type="button"
+                onClick={() => setAiCoachOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-gothic/50 bg-gothic/15 px-2.5 py-1 text-[11px] font-semibold text-brand hover:border-gothic active:scale-95 shadow-sm transition-all"
+                title="Consultar al Asistente IA KAIROS para armar o editar tu rutina"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-gothic animate-pulse" />
+                <span>Asistente IA</span>
+              </button>
+            </div>
             <button
               type="button"
               onClick={onCloseRoutine}
@@ -1608,6 +1621,8 @@ export function RoutineModalsHost({
             />
           </div>
         </div>
+
+        <AiCoachModal isOpen={aiCoachOpen} onClose={() => setAiCoachOpen(false)} />
       </div>,
       document.body
     );

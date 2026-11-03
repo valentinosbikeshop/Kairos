@@ -851,7 +851,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       const blocks = buildWorkoutBlocksFromRoutineDay(dayPlan, catalog, sessions, profile);
       setTitleRequiredError(false);
       setActiveWorkout({
-        title: '',
+        title: dayPlan.focusTitle || '',
         titlePlaceholder: `Ej: ${dayPlan.focusTitle}`,
         startedAtMs: Date.now(),
         notes: '',
@@ -1149,11 +1149,10 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
     ok: boolean;
     reason?: 'missing_title' | 'empty_blocks';
   } => {
-    const cleanTitle = activeWorkout.title.trim();
-    if (!cleanTitle) {
-      setTitleRequiredError(true);
-      return { ok: false, reason: 'missing_title' };
-    }
+    const cleanTitle =
+      activeWorkout.title.trim() ||
+      activeWorkout.titlePlaceholder?.replace(/^Ej:\s*/i, '').trim() ||
+      'Entrenamiento del día';
 
     const validTimerLogs = (activeWorkout.timerLogs ?? []).filter((t) => t.kind !== 'rest');
     const nonEmptyBlocks = activeWorkout.blocks.filter((b) => b.exercises.length > 0);

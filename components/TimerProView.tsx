@@ -166,7 +166,7 @@ export function TimerProView() {
         : isoHoldSec * 1000;
 
   return (
-    <div className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-28 space-y-5">
+    <div className="px-5 ios-page-safe-pt pb-28 space-y-5">
       {/* Clean Header with Full Sound Settings Modal Trigger */}
       <div className="flex items-center justify-between">
         <h1 className="font-gothic text-xl font-semibold tracking-wide text-brand">

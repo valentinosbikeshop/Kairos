@@ -181,7 +181,7 @@ export function AnalyticsView() {
   };
 
   return (
-    <div className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-28 space-y-6">
+    <div className="px-5 ios-page-safe-pt pb-28 space-y-6">
       {/* Calm Gothic Title + Direct Update Button */}
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-1">

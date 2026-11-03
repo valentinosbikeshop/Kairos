@@ -327,7 +327,7 @@ export function AuthAndOnboardingView() {
 
   // ==================== SCREEN 2: POST-REGISTRATION ONBOARDING ====================
   return (
-    <div className="min-h-[100dvh] px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-12 gothic-sanctuary-bg space-y-6">
+    <div className="min-h-[100dvh] px-5 ios-page-safe-pt pb-12 gothic-sanctuary-bg space-y-6">
       {/* Progress Indicator */}
       <div className="text-center space-y-1.5">
         <span className="font-gothic text-[11px] uppercase tracking-[0.22em] text-gothic">

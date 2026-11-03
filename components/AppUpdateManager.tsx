@@ -138,7 +138,7 @@ export function AppUpdateBanner() {
   if (!updateAvailable) return null;
 
   return (
-    <div className="sticky top-0 z-50 mx-auto w-full max-w-[430px] px-4 pt-[max(0.5rem,env(safe-area-inset-top))]">
+    <div className="sticky top-0 z-50 mx-auto w-full max-w-[430px] px-4 ios-header-safe-pt">
       <div className="flex items-center justify-between gap-2.5 rounded-2xl border border-gothic/60 bg-surface/95 px-3.5 py-2.5 shadow-2xl backdrop-blur-xl animate-fade-up">
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles className="h-4 w-4 shrink-0 text-gothic" />

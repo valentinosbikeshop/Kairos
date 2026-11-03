@@ -110,7 +110,7 @@ function KairosInnerWorkspace() {
             {/* Calm Gothic Bottom Navigation */}
             <nav
               aria-label="Navegación principal"
-              className="fixed bottom-0 inset-x-0 z-40 mx-auto max-w-[430px] border-t border-stoneborder bg-background/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]"
+              className="fixed bottom-0 inset-x-0 z-40 mx-auto max-w-[430px] border-t border-stoneborder bg-background/95 backdrop-blur-xl ios-bottom-safe-pb"
             >
               <div className="grid grid-cols-5 px-2 py-1.5">
                 {tabs.map((tab) => {

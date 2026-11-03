@@ -82,3 +82,20 @@ input[type="range"]::-webkit-slider-thumb {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* iOS Safe Area Utilities for iPhone Notch & Dynamic Island */
+.ios-header-safe-pt {
+  padding-top: calc(env(safe-area-inset-top, 44px) + 0.75rem);
+}
+
+.ios-page-safe-pt {
+  padding-top: calc(env(safe-area-inset-top, 44px) + 1.15rem);
+}
+
+.ios-bottom-safe-pb {
+  padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 0.5rem);
+}
+
+.ios-floating-ai-bottom {
+  bottom: calc(env(safe-area-inset-bottom, 20px) + 5.25rem);
+}

@@ -65,6 +65,8 @@ export function WorkoutStudio() {
   const [isTipExpanded, setIsTipExpanded] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [showTimerLogs, setShowTimerLogs] = useState(false);
+  const [showExerciseSuggestions, setShowExerciseSuggestions] = useState(false);
+  const [hasManuallyEditedTitle, setHasManuallyEditedTitle] = useState(false);
   const [selectedSuggestionDayId, setSelectedSuggestionDayId] = useState<string | null>(null);
   const [pickerTarget, setPickerTarget] = useState<{
     blockId: string;
@@ -115,6 +117,24 @@ export function WorkoutStudio() {
     );
   }, [activeRoutineDays, routine, selectedSuggestionDayId, todayRoutine.todayPlan]);
 
+  // Synchronize session title to active day focusTitle automatically unless user manually typed a custom title
+  useEffect(() => {
+    if (!hasManuallyEditedTitle && activeSuggestionDay?.focusTitle) {
+      if (
+        !activeWorkout.title ||
+        activeWorkout.title === activeWorkout.titlePlaceholder?.replace(/^Ej:\s*/i, '').trim()
+      ) {
+        updateWorkoutTitle(activeSuggestionDay.focusTitle);
+      }
+    }
+  }, [
+    activeSuggestionDay?.focusTitle,
+    activeWorkout.title,
+    activeWorkout.titlePlaceholder,
+    hasManuallyEditedTitle,
+    updateWorkoutTitle,
+  ]);
+
   // Track which exercises are already added in today's active workout
   const addedCatalogIdsAndNames = useMemo(() => {
     const ids = new Set<string>();
@@ -154,16 +174,15 @@ export function WorkoutStudio() {
   }, [activeModes, activeWorkout.titlePlaceholder, todayRoutine.todayPlan]);
 
   const handleFinishSession = () => {
-    const cleanTitle = activeWorkout.title.trim();
-    if (!cleanTitle) {
-      const res = finishAndAnalyzeWorkout();
-      if (!res.ok && res.reason === 'missing_title') {
-        titleInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setTimeout(() => {
-          titleInputRef.current?.focus();
-        }, 220);
-      }
-      return;
+    const fallbackTitle =
+      activeWorkout.title.trim() ||
+      activeSuggestionDay?.focusTitle ||
+      todayRoutine.todayPlan?.focusTitle ||
+      activeWorkout.titlePlaceholder?.replace(/^Ej:\s*/i, '').trim() ||
+      'Entrenamiento del día';
+
+    if (!activeWorkout.title.trim()) {
+      updateWorkoutTitle(fallbackTitle);
     }
 
     const allExercises = activeWorkout.blocks.flatMap((b) => b.exercises);
@@ -200,7 +219,7 @@ export function WorkoutStudio() {
   return (
     <div className="pb-36">
       {/* ================= SERENE GOTHIC TOP BAR (NO TOP-LEFT STOPWATCH) ================= */}
-      <header className="sticky top-0 z-30 border-b border-stoneborder bg-background/95 px-5 pt-[max(0.85rem,env(safe-area-inset-top))] pb-3 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-stoneborder bg-background/95 px-5 ios-header-safe-pt pb-3 backdrop-blur-xl">
         <div className="flex items-center justify-between gap-2">
           <span className="font-gothic text-base font-semibold tracking-[0.22em] text-brand">
             KAIROS
@@ -306,7 +325,12 @@ export function WorkoutStudio() {
                       <button
                         key={d.id}
                         type="button"
-                        onClick={() => setSelectedSuggestionDayId(d.id)}
+                        onClick={() => {
+                          setSelectedSuggestionDayId(d.id);
+                          if (!hasManuallyEditedTitle) {
+                            updateWorkoutTitle(d.focusTitle);
+                          }
+                        }}
                         className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] transition-colors ${
                           isSelected
                             ? 'border-gothic/60 bg-elevated text-brand font-medium'
@@ -321,47 +345,83 @@ export function WorkoutStudio() {
                 </div>
               )}
 
-              {/* ORDERED QUICK-ADD SUGGESTION BUTTONS FROM USER'S ROUTINE */}
+              {/* OPTIONAL COLLAPSIBLE SUGGESTIONS SECTION */}
               {activeSuggestionDay && activeSuggestionDay.exercises.length > 0 && (
-                <div className="space-y-2 pt-0.5">
-                  <div className="flex items-center justify-between text-[11px] text-brand-muted">
-                    <span>Sugerencias en tu orden ({activeSuggestionDay.focusTitle}):</span>
-                    <span className="text-[10px] text-gothic">Toca para añadir</span>
+                <div className="space-y-2 pt-1 border-t border-stoneborder/50">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setShowExerciseSuggestions((v) => !v)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-brand-muted hover:text-brand transition-colors py-0.5"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-gothic" />
+                      <span>Sugerencias del día ({activeSuggestionDay.focusTitle})</span>
+                      <span className="rounded-full bg-surface border border-stoneborder px-1.5 py-0.2 text-[10px] font-mono text-gothic">
+                        {activeSuggestionDay.exercises.length}
+                      </span>
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 text-brand-muted transition-transform duration-200 ${
+                          showExerciseSuggestions ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowExerciseSuggestions((v) => !v)}
+                      className="text-[11px] text-gothic hover:underline"
+                    >
+                      {showExerciseSuggestions ? 'Ocultar' : 'Ver ejercicios'}
+                    </button>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5">
-                    {activeSuggestionDay.exercises.map((pres, index) => {
-                      const alreadyAdded =
-                        addedCatalogIdsAndNames.ids.has(pres.catalogId) ||
-                        addedCatalogIdsAndNames.names.has(pres.name.trim().toLowerCase());
+                  {showExerciseSuggestions && (
+                    <div className="flex flex-col gap-1.5 pt-1 animate-fade-up">
+                      {activeSuggestionDay.exercises.map((pres, index) => {
+                        const alreadyAdded =
+                          addedCatalogIdsAndNames.ids.has(pres.catalogId) ||
+                          addedCatalogIdsAndNames.names.has(pres.name.trim().toLowerCase());
 
-                      return (
-                        <button
-                          key={`${pres.catalogId}_${index}`}
-                          type="button"
-                          onClick={() =>
-                            addRoutineExerciseToWorkout(pres, activeSuggestionDay.focusTitle)
-                          }
-                          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-left text-xs transition-all active:scale-95 ${
-                            alreadyAdded
-                              ? 'border-gothic/45 bg-gothic/15 text-brand'
-                              : 'border-stoneborder bg-background/90 text-brand hover:border-gothic/60'
-                          }`}
-                        >
-                          <span className="font-mono text-[10px] text-gothic">{index + 1}.</span>
-                          <span className="font-medium">{pres.name}</span>
-                          <span className="text-[10px] text-brand-muted tabular-nums">
-                            {pres.sets}×{pres.repRangeLabel.replace(/\s*reps?/i, '')}
-                          </span>
-                          {alreadyAdded ? (
-                            <Check className="h-3.5 w-3.5 text-gothic shrink-0" />
-                          ) : (
-                            <Plus className="h-3.5 w-3.5 text-gothic shrink-0" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                        return (
+                          <button
+                            key={`${pres.catalogId}_${index}`}
+                            type="button"
+                            onClick={() =>
+                              addRoutineExerciseToWorkout(pres, activeSuggestionDay.focusTitle)
+                            }
+                            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs transition-all active:scale-95 ${
+                              alreadyAdded
+                                ? 'border-gothic/45 bg-gothic/15 text-brand'
+                                : 'border-stoneborder bg-background/90 text-brand hover:border-gothic/60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="font-mono text-[10px] text-gothic shrink-0">
+                                {index + 1}.
+                              </span>
+                              <span className="truncate font-medium">{pres.name}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-mono text-[10px] text-brand-muted tabular-nums">
+                                {pres.sets}×{pres.repRangeLabel.replace(/\s*reps?/i, '')}
+                              </span>
+                              {pres.targetWeightKg !== undefined && pres.targetWeightKg > 0 && (
+                                <span className="font-mono text-[10px] text-gothic">
+                                  {pres.targetWeightKg}kg
+                                </span>
+                              )}
+                              {alreadyAdded ? (
+                                <Check className="h-3.5 w-3.5 text-gothic shrink-0" />
+                              ) : (
+                                <Plus className="h-3.5 w-3.5 text-brand-muted shrink-0" />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -427,26 +487,21 @@ export function WorkoutStudio() {
             id="workout-title-input"
             type="text"
             value={activeWorkout.title}
-            onChange={(e) => updateWorkoutTitle(e.target.value)}
+            onChange={(e) => {
+              setHasManuallyEditedTitle(true);
+              updateWorkoutTitle(e.target.value);
+            }}
             placeholder={dynamicExamplePlaceholder}
-            className={`w-full rounded-xl border bg-surface px-3.5 py-2.5 text-[16px] font-medium text-brand placeholder-brand-subtle transition-colors focus:outline-none ${
-              titleRequiredError
-                ? 'border-status-regress'
-                : 'border-stoneborder focus:border-gothic'
-            }`}
+            className="w-full rounded-xl border border-stoneborder bg-surface px-3.5 py-2.5 text-[16px] font-medium text-brand placeholder-brand-subtle transition-colors focus:border-gothic focus:outline-none"
           />
 
-          {titleRequiredError ? (
-            <p className="text-xs text-status-regress">
-              Escribe el nombre de tu sesión para poder guardarla.
-            </p>
-          ) : (
-            !activeWorkout.title.trim() && (
-              <p className="text-[11px] text-brand-subtle">
-                Ejemplo en gris · Edítalo con tu propio título al guardar.
-              </p>
-            )
-          )}
+          <p className="text-[11px] text-brand-subtle">
+            {activeWorkout.title.trim()
+              ? 'Puedes editar este título si lo deseas antes de guardar tu sesión.'
+              : `Opcional · Se guardará automáticamente como "${
+                  activeSuggestionDay?.focusTitle || 'Entrenamiento del día'
+                }".`}
+          </p>
         </div>
 
         {/* ================= AUTO-RECORDED INTERVALS & ISOMETRICS ONLY ================= */}

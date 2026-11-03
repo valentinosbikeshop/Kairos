@@ -272,7 +272,7 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/80 backdrop-blur-md">
       <div className="relative flex h-[92dvh] w-full max-w-[430px] flex-col rounded-t-3xl border-t border-x border-stoneborder bg-[#0B090F] shadow-2xl text-brand animate-fade-up pb-[env(safe-area-inset-bottom)]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-stoneborder/70 px-4 py-3 bg-[#110E17]/80 backdrop-blur-md">

@@ -595,32 +595,26 @@ function HypertrophyRows({
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[24px_1.15fr_1fr_0.85fr_0.75fr_38px] gap-1.5 px-1 text-[10px] uppercase tracking-wider text-brand-muted">
+      <div className="grid grid-cols-[20px_1fr_0.8fr_0.75fr_0.7fr_34px_30px] items-center gap-1 px-1 text-[10px] uppercase tracking-wider text-brand-muted">
         <span>#</span>
         <span>Serie</span>
         <span className="text-center">Kg</span>
         <span className="text-center">Reps</span>
         <span className="text-center">RIR</span>
         <span className="text-center">✓</span>
+        <span className="text-center" aria-hidden="true" />
       </div>
 
       {sets.map((s, idx) => (
         <div
           key={s.id}
-          className={`grid grid-cols-[24px_1.15fr_1fr_0.85fr_0.75fr_38px] items-center gap-1.5 rounded-xl border p-1.5 transition-colors ${
+          className={`grid grid-cols-[20px_1fr_0.8fr_0.75fr_0.7fr_34px_30px] items-center gap-1 rounded-xl border p-1.5 transition-colors ${
             s.completed
               ? 'border-gothic/40 bg-gothic/10'
               : 'border-stoneborder bg-background/60'
           }`}
         >
-          <button
-            type="button"
-            title="Eliminar serie"
-            onClick={() => sets.length > 1 && onChangeSets(sets.filter((x) => x.id !== s.id))}
-            className="text-xs text-brand-muted hover:text-status-regress text-center"
-          >
-            {idx + 1}
-          </button>
+          <span className="text-xs font-mono text-brand-muted text-center">{idx + 1}</span>
 
           <select
             aria-label="Tipo de serie"
@@ -632,7 +626,7 @@ function HypertrophyRows({
                 )
               )
             }
-            className="w-full truncate rounded-lg border border-stoneborder bg-surface px-1.5 py-1.5 text-[16px] text-brand focus:border-gothic/60 focus:outline-none"
+            className="w-full truncate rounded-lg border border-stoneborder bg-surface px-1 py-1.5 text-[15px] text-brand focus:border-gothic/60 focus:outline-none"
           >
             {HYPERTROPHY_TYPES.map((t) => (
               <option key={t} value={t} className="bg-surface">
@@ -653,7 +647,7 @@ function HypertrophyRows({
                 )
               )
             }
-            className="w-full rounded-lg border border-stoneborder bg-surface px-1.5 py-1.5 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic/60 focus:outline-none"
+            className="w-full rounded-lg border border-stoneborder bg-surface px-1 py-1.5 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic/60 focus:outline-none"
           />
 
           <input
@@ -678,7 +672,7 @@ function HypertrophyRows({
                 sets.map((x) => (x.id === s.id ? { ...x, rir: e.target.value as RirValue } : x))
               )
             }
-            className="w-full rounded-lg border border-stoneborder bg-surface px-1 py-1.5 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic/60 focus:outline-none"
+            className="w-full rounded-lg border border-stoneborder bg-surface px-0.5 py-1.5 text-center font-mono text-[15px] tabular-nums text-brand focus:border-gothic/60 focus:outline-none"
           >
             {RIR_OPTIONS.map((r) => (
               <option key={r} value={r} className="bg-surface">
@@ -695,7 +689,7 @@ function HypertrophyRows({
               onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
               onToggleComplete(next, s.restSeconds || defaultRest);
             }}
-            className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-all active:scale-90 ${
+            className={`flex h-9 w-8 items-center justify-center rounded-xl border transition-all active:scale-90 ${
               s.completed
                 ? 'border-gothic bg-gothic/25 text-brand'
                 : 'border-stoneborder bg-surface text-brand-muted'
@@ -703,8 +697,24 @@ function HypertrophyRows({
           >
             <Check className="h-4 w-4 stroke-[2.2]" />
           </button>
+
+          <button
+            type="button"
+            title="Eliminar serie"
+            aria-label="Eliminar serie"
+            onClick={() => onChangeSets(sets.filter((x) => x.id !== s.id))}
+            className="flex h-9 w-7 items-center justify-center rounded-xl text-brand-muted hover:text-status-regress hover:bg-status-regress/10 active:scale-90 transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       ))}
+
+      {sets.length === 0 && (
+        <div className="rounded-xl border border-dashed border-stoneborder/70 p-3 text-center text-xs text-brand-muted">
+          Sin series registradas. Toca &quot;+ Serie&quot; para añadir una.
+        </div>
+      )}
 
       <div className="flex justify-end pt-1">
         <button
@@ -780,13 +790,14 @@ function StrengthRows({
         </div>
       </div>
 
-      <div className="grid grid-cols-[24px_1.1fr_0.8fr_0.85fr_0.8fr_38px] gap-1.5 px-1 text-[10px] uppercase tracking-wider text-brand-muted">
+      <div className="grid grid-cols-[20px_1fr_0.8fr_0.8fr_0.75fr_34px_30px] items-center gap-1 px-1 text-[10px] uppercase tracking-wider text-brand-muted">
         <span>#</span>
         <span className="text-center">Kg</span>
         <span className="text-center">Reps</span>
         <span className="text-center">RPE</span>
         <span className="text-center">%1RM</span>
         <span className="text-center">✓</span>
+        <span className="text-center" aria-hidden="true" />
       </div>
 
       {sets.map((s, idx) => {
@@ -794,19 +805,13 @@ function StrengthRows({
         return (
           <div
             key={s.id}
-            className={`grid grid-cols-[24px_1.1fr_0.8fr_0.85fr_0.8fr_38px] items-center gap-1.5 rounded-xl border p-1.5 transition-colors ${
+            className={`grid grid-cols-[20px_1fr_0.8fr_0.8fr_0.75fr_34px_30px] items-center gap-1 rounded-xl border p-1.5 transition-colors ${
               s.completed
                 ? 'border-gothic/40 bg-gothic/10'
                 : 'border-stoneborder bg-background/60'
             }`}
           >
-            <button
-              type="button"
-              onClick={() => sets.length > 1 && onChangeSets(sets.filter((x) => x.id !== s.id))}
-              className="text-xs text-brand-muted hover:text-status-regress text-center"
-            >
-              {idx + 1}
-            </button>
+            <span className="text-xs font-mono text-brand-muted text-center">{idx + 1}</span>
 
             <input
               type="number"
@@ -820,7 +825,7 @@ function StrengthRows({
                   )
                 )
               }
-              className="w-full rounded-lg border border-stoneborder bg-surface px-1.5 py-1.5 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic/60 focus:outline-none"
+              className="w-full rounded-lg border border-stoneborder bg-surface px-1 py-1.5 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic/60 focus:outline-none"
             />
 
             <input
@@ -849,7 +854,7 @@ function StrengthRows({
                   )
                 )
               }
-              className="w-full rounded-lg border border-stoneborder bg-surface px-1 py-1.5 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic/60 focus:outline-none"
+              className="w-full rounded-lg border border-stoneborder bg-surface px-0.5 py-1.5 text-center font-mono text-[15px] tabular-nums text-brand focus:border-gothic/60 focus:outline-none"
             >
               {RPE_OPTIONS.map((r) => (
                 <option key={r} value={r} className="bg-surface">
@@ -870,7 +875,7 @@ function StrengthRows({
                 onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
                 onToggleComplete(next, s.restSeconds || defaultRest);
               }}
-              className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-all active:scale-90 ${
+              className={`flex h-9 w-8 items-center justify-center rounded-xl border transition-all active:scale-90 ${
                 s.completed
                   ? 'border-gothic bg-gothic/25 text-brand'
                   : 'border-stoneborder bg-surface text-brand-muted'
@@ -878,9 +883,25 @@ function StrengthRows({
             >
               <Check className="h-4 w-4 stroke-[2.2]" />
             </button>
+
+            <button
+              type="button"
+              title="Eliminar serie de fuerza"
+              aria-label="Eliminar serie de fuerza"
+              onClick={() => onChangeSets(sets.filter((x) => x.id !== s.id))}
+              className="flex h-9 w-7 items-center justify-center rounded-xl text-brand-muted hover:text-status-regress hover:bg-status-regress/10 active:scale-90 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         );
       })}
+
+      {sets.length === 0 && (
+        <div className="rounded-xl border border-dashed border-stoneborder/70 p-3 text-center text-xs text-brand-muted">
+          Sin series registradas. Toca &quot;+ Serie&quot; para añadir una.
+        </div>
+      )}
 
       <div className="flex justify-end pt-1">
         <button
@@ -925,31 +946,26 @@ function CalisthenicsDynamicRows({
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[22px_1.3fr_0.95fr_0.75fr_0.75fr_38px] gap-1.5 px-1 text-[10px] uppercase tracking-wider text-brand-muted">
+      <div className="grid grid-cols-[20px_1.2fr_0.85fr_0.7fr_0.65fr_34px_30px] items-center gap-1 px-1 text-[10px] uppercase tracking-wider text-brand-muted">
         <span>#</span>
         <span>Variación</span>
         <span className="text-center">+Kg</span>
         <span className="text-center">Reps</span>
         <span className="text-center">RIR</span>
         <span className="text-center">✓</span>
+        <span className="text-center" aria-hidden="true" />
       </div>
 
       {sets.map((s, idx) => (
         <div
           key={s.id}
-          className={`grid grid-cols-[22px_1.3fr_0.95fr_0.75fr_0.75fr_38px] items-center gap-1.5 rounded-xl border p-1.5 ${
+          className={`grid grid-cols-[20px_1.2fr_0.85fr_0.7fr_0.65fr_34px_30px] items-center gap-1 rounded-xl border p-1.5 ${
             s.completed
               ? 'border-gothic/40 bg-gothic/10'
               : 'border-stoneborder bg-background/60'
           }`}
         >
-          <button
-            type="button"
-            onClick={() => sets.length > 1 && onChangeSets(sets.filter((x) => x.id !== s.id))}
-            className="text-xs text-brand-muted hover:text-status-regress"
-          >
-            {idx + 1}
-          </button>
+          <span className="text-xs font-mono text-brand-muted text-center">{idx + 1}</span>
 
           <input
             type="text"
@@ -960,7 +976,7 @@ function CalisthenicsDynamicRows({
                 sets.map((x) => (x.id === s.id ? { ...x, variation: e.target.value } : x))
               )
             }
-            className="w-full rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[16px] text-brand focus:border-gothic/60 focus:outline-none"
+            className="w-full rounded-lg border border-stoneborder bg-surface px-1.5 py-1.5 text-[15px] text-brand focus:border-gothic/60 focus:outline-none"
           />
 
           <input
@@ -1000,7 +1016,7 @@ function CalisthenicsDynamicRows({
                 sets.map((x) => (x.id === s.id ? { ...x, rir: e.target.value as RirValue } : x))
               )
             }
-            className="w-full rounded-lg border border-stoneborder bg-surface px-1 py-1.5 text-center font-mono text-[16px] text-brand"
+            className="w-full rounded-lg border border-stoneborder bg-surface px-0.5 py-1.5 text-center font-mono text-[15px] text-brand"
           >
             {RIR_OPTIONS.map((r) => (
               <option key={r} value={r} className="bg-surface">
@@ -1011,12 +1027,13 @@ function CalisthenicsDynamicRows({
 
           <button
             type="button"
+            aria-label="Completar serie"
             onClick={() => {
               const next = !s.completed;
               onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
               onToggleComplete(next, s.restSeconds || defaultRest);
             }}
-            className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-all active:scale-90 ${
+            className={`flex h-9 w-8 items-center justify-center rounded-xl border transition-all active:scale-90 ${
               s.completed
                 ? 'border-gothic bg-gothic/25 text-brand'
                 : 'border-stoneborder bg-surface text-brand-muted'
@@ -1024,8 +1041,24 @@ function CalisthenicsDynamicRows({
           >
             <Check className="h-4 w-4 stroke-[2.2]" />
           </button>
+
+          <button
+            type="button"
+            title="Eliminar serie de calistenia"
+            aria-label="Eliminar serie de calistenia"
+            onClick={() => onChangeSets(sets.filter((x) => x.id !== s.id))}
+            className="flex h-9 w-7 items-center justify-center rounded-xl text-brand-muted hover:text-status-regress hover:bg-status-regress/10 active:scale-90 transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       ))}
+
+      {sets.length === 0 && (
+        <div className="rounded-xl border border-dashed border-stoneborder/70 p-3 text-center text-xs text-brand-muted">
+          Sin series registradas. Toca &quot;+ Serie&quot; para añadir una.
+        </div>
+      )}
 
       <div className="flex justify-end pt-1">
         <button
@@ -1082,14 +1115,10 @@ function CalisthenicsIsometricRows({
           }`}
         >
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 flex-1">
-              <button
-                type="button"
-                onClick={() => sets.length > 1 && onChangeSets(sets.filter((x) => x.id !== s.id))}
-                className="text-xs text-brand-muted hover:text-status-regress"
-              >
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="text-xs font-mono font-medium text-brand-muted px-1.5 py-0.5 rounded bg-surface border border-stoneborder shrink-0">
                 #{idx + 1}
-              </button>
+              </span>
               <select
                 aria-label="Progresión isométrica"
                 value={s.progression}
@@ -1102,7 +1131,7 @@ function CalisthenicsIsometricRows({
                     )
                   )
                 }
-                className="flex-1 rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[16px] text-brand focus:border-gothic/60 focus:outline-none"
+                className="flex-1 min-w-0 truncate rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[15px] text-brand focus:border-gothic/60 focus:outline-none"
               >
                 {PROGRESSIONS.map((p) => (
                   <option key={p} value={p} className="bg-surface">
@@ -1115,27 +1144,40 @@ function CalisthenicsIsometricRows({
             <button
               type="button"
               onClick={() => onLaunchIsoTimer(s)}
-              className="inline-flex items-center gap-1 rounded-xl border border-gothic/40 bg-gothic/15 px-2.5 py-1.5 text-xs font-medium text-brand active:scale-95"
+              className="inline-flex items-center gap-1 shrink-0 rounded-xl border border-gothic/40 bg-gothic/15 px-2.5 py-1.5 text-xs font-medium text-brand active:scale-95"
             >
               <Timer className="h-3.5 w-3.5 text-gothic" />
               {s.targetSeconds}s
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                const next = !s.completed;
-                onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
-                onToggleComplete(next, s.restSeconds || defaultRest);
-              }}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
-                s.completed
-                  ? 'border-gothic bg-gothic/25 text-brand'
-                  : 'border-stoneborder bg-surface text-brand-muted'
-              }`}
-            >
-              <Check className="h-4 w-4 stroke-[2.2]" />
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                aria-label="Completar sostén"
+                onClick={() => {
+                  const next = !s.completed;
+                  onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
+                  onToggleComplete(next, s.restSeconds || defaultRest);
+                }}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
+                  s.completed
+                    ? 'border-gothic bg-gothic/25 text-brand'
+                    : 'border-stoneborder bg-surface text-brand-muted'
+                }`}
+              >
+                <Check className="h-4 w-4 stroke-[2.2]" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onChangeSets(sets.filter((x) => x.id !== s.id))}
+                title="Eliminar sostén"
+                aria-label="Eliminar sostén"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stoneborder bg-surface text-brand-muted hover:text-status-regress hover:border-status-regress/40 hover:bg-status-regress/10 transition-all active:scale-90"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-2">
@@ -1199,6 +1241,12 @@ function CalisthenicsIsometricRows({
           </div>
         </div>
       ))}
+
+      {sets.length === 0 && (
+        <div className="rounded-xl border border-dashed border-stoneborder/70 p-3 text-center text-xs text-brand-muted">
+          Sin sostenes registrados. Toca &quot;+ Sostén&quot; para añadir uno.
+        </div>
+      )}
 
       <div className="flex justify-end pt-1">
         <button
@@ -1283,13 +1331,9 @@ function HyroxRows({
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                <button
-                  type="button"
-                  onClick={() => sets.length > 1 && onChangeSets(sets.filter((x) => x.id !== s.id))}
-                  className="text-xs text-brand-muted hover:text-status-regress"
-                >
+                <span className="text-xs font-mono font-medium text-brand-muted px-1.5 py-0.5 rounded bg-surface border border-stoneborder shrink-0">
                   #{idx + 1}
-                </button>
+                </span>
                 <select
                   aria-label="Estación Oficial Hyrox"
                   value={s.station}
@@ -1302,7 +1346,7 @@ function HyroxRows({
                       )
                     )
                   }
-                  className="flex-1 truncate rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[16px] text-brand focus:border-gothic/60 focus:outline-none"
+                  className="flex-1 truncate rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[15px] text-brand focus:border-gothic/60 focus:outline-none"
                 >
                   {HYROX_STATIONS.map((st) => (
                     <option key={st} value={st} className="bg-surface">
@@ -1312,30 +1356,45 @@ function HyroxRows({
                 </select>
               </div>
 
-              <InlineSplitStopwatch
-                currentSeconds={s.splitSeconds}
-                onStopWithSeconds={(elapsed) =>
-                  onChangeSets(
-                    sets.map((x) => (x.id === s.id ? { ...x, splitSeconds: elapsed } : x))
-                  )
-                }
-              />
+              <div className="shrink-0">
+                <InlineSplitStopwatch
+                  currentSeconds={s.splitSeconds}
+                  onStopWithSeconds={(elapsed) =>
+                    onChangeSets(
+                      sets.map((x) => (x.id === s.id ? { ...x, splitSeconds: elapsed } : x))
+                    )
+                  }
+                />
+              </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !s.completed;
-                  onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
-                  onToggleComplete(next, defaultRest);
-                }}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
-                  s.completed
-                    ? 'border-gothic bg-gothic/25 text-brand'
-                    : 'border-stoneborder bg-surface text-brand-muted'
-                }`}
-              >
-                <Check className="h-4 w-4 stroke-[2.2]" />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  aria-label="Completar estación Hyrox"
+                  onClick={() => {
+                    const next = !s.completed;
+                    onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
+                    onToggleComplete(next, defaultRest);
+                  }}
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
+                    s.completed
+                      ? 'border-gothic bg-gothic/25 text-brand'
+                      : 'border-stoneborder bg-surface text-brand-muted'
+                  }`}
+                >
+                  <Check className="h-4 w-4 stroke-[2.2]" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onChangeSets(sets.filter((x) => x.id !== s.id))}
+                  title="Eliminar estación Hyrox"
+                  aria-label="Eliminar estación Hyrox"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stoneborder bg-surface text-brand-muted hover:text-status-regress hover:border-status-regress/40 hover:bg-status-regress/10 transition-all active:scale-90"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-4 gap-1.5">
@@ -1412,6 +1471,12 @@ function HyroxRows({
         );
       })}
 
+      {sets.length === 0 && (
+        <div className="rounded-xl border border-dashed border-stoneborder/70 p-3 text-center text-xs text-brand-muted">
+          Sin estaciones registradas. Toca &quot;+ Carrera&quot; o &quot;+ Estación&quot; para añadir.
+        </div>
+      )}
+
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
           type="button"
@@ -1475,14 +1540,10 @@ function JumpRopeRows({
             }`}
           >
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 flex-1">
-                <button
-                  type="button"
-                  onClick={() => sets.length > 1 && onChangeSets(sets.filter((x) => x.id !== s.id))}
-                  className="text-xs text-brand-muted hover:text-status-regress"
-                >
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-xs font-mono font-bold text-brand-muted px-2 py-1 rounded-lg bg-surface border border-stoneborder shrink-0">
                   R{idx + 1}
-                </button>
+                </span>
                 <select
                   aria-label="Estilo de salto de cuerda"
                   value={s.style}
@@ -1493,7 +1554,7 @@ function JumpRopeRows({
                       )
                     )
                   }
-                  className="flex-1 rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[16px] text-brand"
+                  className="flex-1 min-w-0 truncate rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[15px] text-brand"
                 >
                   {JUMPROPE_STYLES.map((st) => (
                     <option key={st} value={st} className="bg-surface">
@@ -1503,23 +1564,36 @@ function JumpRopeRows({
                 </select>
               </div>
 
-              <span className="font-mono text-xs tabular-nums text-brand-muted">{rpm} RPM</span>
+              <span className="font-mono text-xs tabular-nums text-brand-muted shrink-0">{rpm} RPM</span>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !s.completed;
-                  onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
-                  onToggleComplete(next, s.restSeconds || defaultRest);
-                }}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
-                  s.completed
-                    ? 'border-gothic bg-gothic/25 text-brand'
-                    : 'border-stoneborder bg-surface text-brand-muted'
-                }`}
-              >
-                <Check className="h-4 w-4 stroke-[2.2]" />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  aria-label="Completar ronda de cuerda"
+                  onClick={() => {
+                    const next = !s.completed;
+                    onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
+                    onToggleComplete(next, s.restSeconds || defaultRest);
+                  }}
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
+                    s.completed
+                      ? 'border-gothic bg-gothic/25 text-brand'
+                      : 'border-stoneborder bg-surface text-brand-muted'
+                  }`}
+                >
+                  <Check className="h-4 w-4 stroke-[2.2]" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onChangeSets(sets.filter((x) => x.id !== s.id))}
+                  title="Eliminar ronda de cuerda"
+                  aria-label="Eliminar ronda de cuerda"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stoneborder bg-surface text-brand-muted hover:text-status-regress hover:border-status-regress/40 hover:bg-status-regress/10 transition-all active:scale-90"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -1591,6 +1665,12 @@ function JumpRopeRows({
         );
       })}
 
+      {sets.length === 0 && (
+        <div className="rounded-xl border border-dashed border-stoneborder/70 p-3 text-center text-xs text-brand-muted">
+          Sin rondas registradas. Toca &quot;+ Ronda&quot; para añadir una.
+        </div>
+      )}
+
       <div className="flex justify-end pt-1">
         <button
           type="button"
@@ -1646,14 +1726,10 @@ function RunningRows({
             }`}
           >
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 flex-1">
-                <button
-                  type="button"
-                  onClick={() => sets.length > 1 && onChangeSets(sets.filter((x) => x.id !== s.id))}
-                  className="text-xs text-brand-muted hover:text-status-regress"
-                >
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-xs font-mono font-medium text-brand-muted px-1.5 py-0.5 rounded bg-surface border border-stoneborder shrink-0">
                   #{idx + 1}
-                </button>
+                </span>
                 <select
                   aria-label="Tipo de carrera"
                   value={s.runType}
@@ -1664,7 +1740,7 @@ function RunningRows({
                       )
                     )
                   }
-                  className="flex-1 rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[16px] text-brand"
+                  className="flex-1 min-w-0 truncate rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[15px] text-brand"
                 >
                   {RUNNING_TYPES.map((t) => (
                     <option key={t} value={t} className="bg-surface">
@@ -1674,25 +1750,38 @@ function RunningRows({
                 </select>
               </div>
 
-              <span className="font-mono text-xs tabular-nums text-brand-muted">
+              <span className="font-mono text-xs tabular-nums text-brand-muted shrink-0">
                 {paceSecKm > 0 ? `${formatMmSs(paceSecKm)}/km` : '--:--'}
               </span>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !s.completed;
-                  onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
-                  onToggleComplete(next, s.restSeconds || defaultRest);
-                }}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
-                  s.completed
-                    ? 'border-gothic bg-gothic/25 text-brand'
-                    : 'border-stoneborder bg-surface text-brand-muted'
-                }`}
-              >
-                <Check className="h-4 w-4 stroke-[2.2]" />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  aria-label="Completar intervalo de carrera"
+                  onClick={() => {
+                    const next = !s.completed;
+                    onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
+                    onToggleComplete(next, s.restSeconds || defaultRest);
+                  }}
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
+                    s.completed
+                      ? 'border-gothic bg-gothic/25 text-brand'
+                      : 'border-stoneborder bg-surface text-brand-muted'
+                  }`}
+                >
+                  <Check className="h-4 w-4 stroke-[2.2]" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onChangeSets(sets.filter((x) => x.id !== s.id))}
+                  title="Eliminar intervalo de carrera"
+                  aria-label="Eliminar intervalo de carrera"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stoneborder bg-surface text-brand-muted hover:text-status-regress hover:border-status-regress/40 hover:bg-status-regress/10 transition-all active:scale-90"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -1753,6 +1842,12 @@ function RunningRows({
         );
       })}
 
+      {sets.length === 0 && (
+        <div className="rounded-xl border border-dashed border-stoneborder/70 p-3 text-center text-xs text-brand-muted">
+          Sin rondas registradas. Toca &quot;+ Ronda&quot; para añadir una.
+        </div>
+      )}
+
       <div className="flex justify-end pt-1">
         <button
           type="button"
@@ -1809,14 +1904,10 @@ function SwimmingRows({
             }`}
           >
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 flex-1">
-                <button
-                  type="button"
-                  onClick={() => sets.length > 1 && onChangeSets(sets.filter((x) => x.id !== s.id))}
-                  className="text-xs text-brand-muted hover:text-status-regress"
-                >
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-xs font-mono font-medium text-brand-muted px-1.5 py-0.5 rounded bg-surface border border-stoneborder shrink-0">
                   #{idx + 1}
-                </button>
+                </span>
                 <select
                   aria-label="Estilo de natación"
                   value={s.stroke}
@@ -1827,7 +1918,7 @@ function SwimmingRows({
                       )
                     )
                   }
-                  className="flex-1 rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[16px] text-brand"
+                  className="flex-1 min-w-0 truncate rounded-lg border border-stoneborder bg-surface px-2 py-1.5 text-[15px] text-brand"
                 >
                   {SWIM_STROKES.map((st) => (
                     <option key={st} value={st} className="bg-surface">
@@ -1837,25 +1928,38 @@ function SwimmingRows({
                 </select>
               </div>
 
-              <span className="font-mono text-xs tabular-nums text-brand-muted">
+              <span className="font-mono text-xs tabular-nums text-brand-muted shrink-0">
                 {pace100 > 0 ? `${formatMmSs(pace100)}/100m` : `${totalMeters}m`}
               </span>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !s.completed;
-                  onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
-                  onToggleComplete(next, s.restSeconds || defaultRest);
-                }}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
-                  s.completed
-                    ? 'border-gothic bg-gothic/25 text-brand'
-                    : 'border-stoneborder bg-surface text-brand-muted'
-                }`}
-              >
-                <Check className="h-4 w-4 stroke-[2.2]" />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  aria-label="Completar serie de natación"
+                  onClick={() => {
+                    const next = !s.completed;
+                    onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
+                    onToggleComplete(next, s.restSeconds || defaultRest);
+                  }}
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
+                    s.completed
+                      ? 'border-gothic bg-gothic/25 text-brand'
+                      : 'border-stoneborder bg-surface text-brand-muted'
+                  }`}
+                >
+                  <Check className="h-4 w-4 stroke-[2.2]" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onChangeSets(sets.filter((x) => x.id !== s.id))}
+                  title="Eliminar serie de natación"
+                  aria-label="Eliminar serie de natación"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stoneborder bg-surface text-brand-muted hover:text-status-regress hover:border-status-regress/40 hover:bg-status-regress/10 transition-all active:scale-90"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -1918,6 +2022,12 @@ function SwimmingRows({
         );
       })}
 
+      {sets.length === 0 && (
+        <div className="rounded-xl border border-dashed border-stoneborder/70 p-3 text-center text-xs text-brand-muted">
+          Sin series de natación. Toca &quot;+ Serie&quot; para añadir una.
+        </div>
+      )}
+
       <div className="flex justify-end pt-1">
         <button
           type="button"
@@ -1970,30 +2080,39 @@ function CyclingRows({
               : 'border-stoneborder bg-background/60'
           }`}
         >
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => sets.length > 1 && onChangeSets(sets.filter((x) => x.id !== s.id))}
-              className="text-xs text-brand-muted hover:text-status-regress"
-            >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-mono font-medium text-brand-muted">
               Intervalo #{idx + 1}
-            </button>
+            </span>
 
-            <button
-              type="button"
-              onClick={() => {
-                const next = !s.completed;
-                onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
-                onToggleComplete(next, s.restSeconds || defaultRest);
-              }}
-              className={`flex h-8 w-9 items-center justify-center rounded-xl border transition-all active:scale-90 ${
-                s.completed
-                  ? 'border-gothic bg-gothic/25 text-brand'
-                  : 'border-stoneborder bg-surface text-brand-muted'
-              }`}
-            >
-              <Check className="h-4 w-4 stroke-[2.2]" />
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                aria-label="Completar intervalo de ciclismo"
+                onClick={() => {
+                  const next = !s.completed;
+                  onChangeSets(sets.map((x) => (x.id === s.id ? { ...x, completed: next } : x)));
+                  onToggleComplete(next, s.restSeconds || defaultRest);
+                }}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-90 ${
+                  s.completed
+                    ? 'border-gothic bg-gothic/25 text-brand'
+                    : 'border-stoneborder bg-surface text-brand-muted'
+                }`}
+              >
+                <Check className="h-4 w-4 stroke-[2.2]" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onChangeSets(sets.filter((x) => x.id !== s.id))}
+                title="Eliminar intervalo de ciclismo"
+                aria-label="Eliminar intervalo de ciclismo"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stoneborder bg-surface text-brand-muted hover:text-status-regress hover:border-status-regress/40 hover:bg-status-regress/10 transition-all active:scale-90"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-4 gap-1.5">
@@ -2065,6 +2184,12 @@ function CyclingRows({
           </div>
         </div>
       ))}
+
+      {sets.length === 0 && (
+        <div className="rounded-xl border border-dashed border-stoneborder/70 p-3 text-center text-xs text-brand-muted">
+          Sin intervalos de ciclismo. Toca &quot;+ Intervalo&quot; para añadir uno.
+        </div>
+      )}
 
       <div className="flex justify-end pt-1">
         <button

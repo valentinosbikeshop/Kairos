@@ -1626,7 +1626,7 @@ export function RoutineModalsHost({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-4">
             <RationaleInlineContent rationale={routine.rationale} />
           </div>
         </div>
@@ -1669,7 +1669,7 @@ export function RoutineModalsHost({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-4">
             <RoutineSetupConfigurator
               profile={profile}
               existingRoutine={routine}

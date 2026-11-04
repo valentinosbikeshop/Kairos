@@ -131,7 +131,7 @@ export function PostWorkoutAiCalibrationModal({
         </div>
 
         {/* List of exercises to calibrate */}
-        <div className="flex-1 overflow-y-auto py-3 space-y-4">
+        <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y py-3 space-y-4">
           {uncalibratedExercises.map((ex) => {
             const resolved = resolveExerciseIntelligently(ex.name, ex.mode);
             const currentDec = decisions[ex.id];

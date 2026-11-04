@@ -69,6 +69,12 @@ function KairosInnerWorkspace() {
     <div className="min-h-[100dvh] w-full bg-[#09080B] flex justify-center">
       {/* Centered iPhone Chassis */}
       <div className="relative flex min-h-[100dvh] w-full max-w-[430px] flex-col bg-background text-brand sm:border-x sm:border-stoneborder sm:shadow-[0_0_80px_rgba(0,0,0,0.85)]">
+        {/* Solid Top Safe-Area Shield for iOS Status Bar & Dynamic Island */}
+        <div
+          aria-hidden="true"
+          className="fixed top-0 inset-x-0 z-40 mx-auto max-w-[430px] h-[env(safe-area-inset-top,48px)] bg-[#0E0D10] pointer-events-none"
+        />
+
         <AppUpdateBanner />
         {!hydrated ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 gothic-sanctuary-bg">

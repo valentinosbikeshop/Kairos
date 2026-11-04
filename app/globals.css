@@ -11,13 +11,19 @@
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
 html,
 body {
   background-color: #0E0D10;
   color: #DDD7CC;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Soft ambient gothic stone glow at top of chassis */
@@ -109,4 +115,15 @@ input[type="range"]::-webkit-slider-thumb {
 .touch-pan-y {
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+}
+
+.overscroll-contain {
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+}
+
+.smooth-scroll-container {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  overscroll-behavior-y: contain;
 }

@@ -249,7 +249,7 @@ export function ExercisePickerModal({
         </div>
 
         {/* Clean Results List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-stoneborder/60 px-4 py-1">
+        <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y divide-y divide-stoneborder/60 px-4 py-1">
           {matches.map(({ item, matchedAlias }) => {
             const ghost = getLastExerciseGhost(sessions, item.id, item.name);
             return (

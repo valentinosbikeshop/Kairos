@@ -547,7 +547,7 @@ export function AiCoachModal({
         {/* Chat Messages */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto px-4 py-3 space-y-3.5 scroll-smooth"
+          className="flex-1 overflow-y-auto px-4 py-3 space-y-3.5 scroll-smooth overscroll-contain touch-pan-y"
         >
           {messages.map((m) => (
             <div

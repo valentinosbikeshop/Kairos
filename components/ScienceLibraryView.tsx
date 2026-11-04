@@ -34,7 +34,7 @@ export function ScienceLibraryView() {
   }, [topic, query]);
 
   return (
-    <div className="px-5 ios-page-safe-pt pb-28 space-y-5">
+    <div className="px-5 ios-page-safe-pt pb-36 space-y-5">
       {/* Calm Gothic Header */}
       <div className="space-y-1">
         <h1 className="font-gothic text-xl font-semibold tracking-wide text-brand">

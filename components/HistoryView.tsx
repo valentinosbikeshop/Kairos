@@ -78,7 +78,7 @@ export function HistoryView() {
   };
 
   return (
-    <div className="px-5 ios-page-safe-pt pb-28 space-y-6">
+    <div className="px-5 ios-page-safe-pt pb-36 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

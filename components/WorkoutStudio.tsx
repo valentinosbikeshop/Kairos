@@ -217,11 +217,11 @@ export function WorkoutStudio() {
   );
 
   return (
-    <div className="pb-20">
+    <div className="pb-36">
       {/* ================= SERENE GOTHIC TOP BAR (NO TOP-LEFT STOPWATCH) ================= */}
       <header className="sticky top-0 z-30 border-b border-stoneborder bg-[#0E0D10] px-5 ios-header-safe-pt pb-3 transition-colors duration-200">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-gothic text-base font-semibold tracking-[0.22em] text-brand select-none">
+          <span className="font-gothic text-base font-bold tracking-[0.24em] text-[#EDE8DF] drop-shadow-sm select-none">
             KAIROS
           </span>
 

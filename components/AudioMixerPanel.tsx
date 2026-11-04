@@ -62,7 +62,7 @@ export function SoundSettingsButton() {
             onClick={() => setOpen(false)}
           >
             <div
-              className="w-full max-w-[430px] rounded-t-3xl sm:rounded-3xl border border-stoneborder bg-surface p-5 shadow-2xl animate-fade-up pb-[max(1.5rem,env(safe-area-inset-bottom))] space-y-4"
+              className="w-full max-w-[430px] max-h-[90dvh] overflow-y-auto overscroll-contain touch-pan-y rounded-t-3xl sm:rounded-3xl border border-stoneborder bg-surface p-5 shadow-2xl animate-fade-up pb-[max(1.5rem,env(safe-area-inset-bottom))] space-y-4"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-stoneborder pb-3">

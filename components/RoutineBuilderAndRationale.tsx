@@ -21,6 +21,7 @@ import { AiCoachModal } from '@/components/AiCoachModal';
 import { getResolvedWorkoutDefaults, MODE_META, toLocalDateKey, uid } from '@/lib/formatters';
 import {
   ArrowDown,
+  ArrowLeftRight,
   ArrowUp,
   BookOpen,
   Calendar,
@@ -1123,199 +1124,226 @@ export function RoutineSetupConfigurator({
                   </select>
                 </div>
 
-                {/* Ordered exercises inside this day */}
+                {/* Ordered exercises inside this day - Horizontally swipeable on mobile */}
                 {day.exercises.length > 0 && (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {day.exercises.map((ex, idx) => (
                       <div
                         key={`${ex.catalogId}_${idx}`}
-                        className="flex items-center justify-between gap-1.5 rounded-lg border border-stoneborder/70 bg-surface px-2.5 py-1.5 text-xs"
+                        className="overflow-x-auto no-scrollbar scroll-smooth rounded-xl border border-stoneborder/70 bg-surface touch-pan-x transition-all duration-150"
                       >
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                          <span className="font-mono text-[11px] text-gothic shrink-0">
-                            {idx + 1}.
-                          </span>
-                          <span className="truncate text-brand font-medium">{ex.name}</span>
-                        </div>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            aria-label="Series"
-                            value={ex.sets === 0 ? '' : ex.sets}
-                            placeholder="3"
-                            onChange={(e) => {
-                              const raw = e.target.value.trim();
-                              const parsed = raw === '' ? 0 : parseInt(raw, 10);
-                              const nextSets = isNaN(parsed) ? 0 : Math.max(0, Math.min(20, parsed));
-                              setActiveManualList((prev) =>
-                                prev.map((d) =>
-                                  d.id === day.id
-                                    ? {
-                                        ...d,
-                                        exercises: d.exercises.map((item, i) =>
-                                          i === idx ? { ...item, sets: nextSets } : item
-                                        ),
-                                      }
-                                    : d
-                                )
-                              );
-                            }}
-                            onBlur={() => {
-                              if (!ex.sets || ex.sets < 1) {
-                                setActiveManualList((prev) =>
-                                  prev.map((d) =>
-                                    d.id === day.id
-                                      ? {
-                                          ...d,
-                                          exercises: d.exercises.map((item, i) =>
-                                            i === idx ? { ...item, sets: 1 } : item
-                                          ),
-                                        }
-                                      : d
-                                  )
-                                );
-                              }
-                            }}
-                            className="w-9 rounded border border-stoneborder bg-background py-0.5 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic focus:outline-none"
-                          />
-                          <span className="text-[10px] text-brand-muted">×</span>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            aria-label="Repeticiones"
-                            value={ex.repsNum === 0 ? '' : ex.repsNum}
-                            placeholder="10"
-                            onChange={(e) => {
-                              const raw = e.target.value.trim();
-                              const parsed = raw === '' ? 0 : parseInt(raw, 10);
-                              const nextReps = isNaN(parsed) ? 0 : Math.max(0, Math.min(200, parsed));
-                              setActiveManualList((prev) =>
-                                prev.map((d) =>
-                                  d.id === day.id
-                                    ? {
-                                        ...d,
-                                        exercises: d.exercises.map((item, i) =>
-                                          i === idx
-                                            ? {
-                                                ...item,
-                                                repsNum: nextReps,
-                                                repRangeLabel: `${nextReps || 1} reps`,
-                                              }
-                                            : item
-                                        ),
-                                      }
-                                    : d
-                                )
-                              );
-                            }}
-                            onBlur={() => {
-                              if (!ex.repsNum || ex.repsNum < 1) {
-                                setActiveManualList((prev) =>
-                                  prev.map((d) =>
-                                    d.id === day.id
-                                      ? {
-                                          ...d,
-                                          exercises: d.exercises.map((item, i) =>
-                                            i === idx
-                                              ? {
-                                                  ...item,
-                                                  repsNum: 10,
-                                                  repRangeLabel: '10 reps',
-                                                }
-                                              : item
-                                          ),
-                                        }
-                                      : d
-                                  )
-                                );
-                              }
-                            }}
-                            className="w-11 rounded border border-stoneborder bg-background py-0.5 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic focus:outline-none"
-                          />
-
-                          <div className="flex items-center gap-0.5">
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              step="0.5"
-                              aria-label="Carga objetivo"
-                              value={
-                                ex.targetWeightKg !== undefined && ex.targetWeightKg > 0
-                                  ? ex.targetWeightKg
-                                  : ''
-                              }
-                              placeholder="kg"
-                              onChange={(e) => {
-                                const raw = e.target.value.trim();
-                                const parsed = raw === '' ? undefined : parseFloat(raw);
-                                const nextWeight =
-                                  parsed !== undefined && !isNaN(parsed) && parsed > 0
-                                    ? parsed
-                                    : undefined;
-                                setActiveManualList((prev) =>
-                                  prev.map((d) =>
-                                    d.id === day.id
-                                      ? {
-                                          ...d,
-                                          exercises: d.exercises.map((item, i) =>
-                                            i === idx ? { ...item, targetWeightKg: nextWeight } : item
-                                          ),
-                                        }
-                                      : d
-                                  )
-                                );
-                              }}
-                              className="w-12 rounded border border-stoneborder bg-background py-0.5 text-center font-mono text-[16px] tabular-nums text-gothic focus:border-gothic focus:outline-none"
-                            />
-                            <span className="text-[10px] text-brand-muted">kg</span>
+                        <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs min-w-[490px]">
+                          {/* Full exercise name without aggressive clipping */}
+                          <div className="flex items-center gap-2 min-w-[200px] max-w-[270px] shrink-0">
+                            <span className="font-mono text-[11px] text-gothic font-semibold shrink-0">
+                              {idx + 1}.
+                            </span>
+                            <span
+                              className="text-brand font-medium text-xs break-words leading-tight select-none"
+                              title={ex.name}
+                            >
+                              {ex.name}
+                            </span>
                           </div>
 
-                          {day.exercises.length > 1 && (
-                            <div className="flex items-center">
-                              <button
-                                type="button"
-                                disabled={idx === 0}
-                                onClick={() => moveExerciseInDay(day.id, idx, -1)}
-                                aria-label="Subir ejercicio"
-                                className="p-0.5 text-brand-subtle hover:text-brand disabled:opacity-25"
-                              >
-                                <ArrowUp className="h-3 w-3" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={idx === day.exercises.length - 1}
-                                onClick={() => moveExerciseInDay(day.id, idx, 1)}
-                                aria-label="Bajar ejercicio"
-                                className="p-0.5 text-brand-subtle hover:text-brand disabled:opacity-25"
-                              >
-                                <ArrowDown className="h-3 w-3" />
-                              </button>
+                          {/* Exercise Configuration Controls */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            {/* Sets */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-brand-muted">Series:</span>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                aria-label="Series"
+                                value={ex.sets === 0 ? '' : ex.sets}
+                                placeholder="3"
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  const parsed = raw === '' ? 0 : parseInt(raw, 10);
+                                  const nextSets = isNaN(parsed) ? 0 : Math.max(0, Math.min(20, parsed));
+                                  setActiveManualList((prev) =>
+                                    prev.map((d) =>
+                                      d.id === day.id
+                                        ? {
+                                            ...d,
+                                            exercises: d.exercises.map((item, i) =>
+                                              i === idx ? { ...item, sets: nextSets } : item
+                                            ),
+                                          }
+                                        : d
+                                    )
+                                  );
+                                }}
+                                onBlur={() => {
+                                  if (!ex.sets || ex.sets < 1) {
+                                    setActiveManualList((prev) =>
+                                      prev.map((d) =>
+                                        d.id === day.id
+                                          ? {
+                                              ...d,
+                                              exercises: d.exercises.map((item, i) =>
+                                                i === idx ? { ...item, sets: 1 } : item
+                                              ),
+                                            }
+                                          : d
+                                      )
+                                    );
+                                  }
+                                }}
+                                className="w-10 rounded-lg border border-stoneborder bg-background py-1 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic focus:outline-none"
+                              />
                             </div>
-                          )}
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setActiveManualList((prev) =>
-                                prev.map((d) =>
-                                  d.id === day.id
-                                    ? {
-                                        ...d,
-                                        exercises: d.exercises.filter((_, i) => i !== idx),
-                                      }
-                                    : d
+                            <span className="text-[10px] text-brand-muted">×</span>
+
+                            {/* Reps */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-brand-muted">Reps:</span>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                aria-label="Repeticiones"
+                                value={ex.repsNum === 0 ? '' : ex.repsNum}
+                                placeholder="10"
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  const parsed = raw === '' ? 0 : parseInt(raw, 10);
+                                  const nextReps = isNaN(parsed) ? 0 : Math.max(0, Math.min(200, parsed));
+                                  setActiveManualList((prev) =>
+                                    prev.map((d) =>
+                                      d.id === day.id
+                                        ? {
+                                            ...d,
+                                            exercises: d.exercises.map((item, i) =>
+                                              i === idx
+                                                ? {
+                                                    ...item,
+                                                    repsNum: nextReps,
+                                                    repRangeLabel: `${nextReps || 1} reps`,
+                                                  }
+                                                : item
+                                            ),
+                                          }
+                                        : d
+                                    )
+                                  );
+                                }}
+                                onBlur={() => {
+                                  if (!ex.repsNum || ex.repsNum < 1) {
+                                    setActiveManualList((prev) =>
+                                      prev.map((d) =>
+                                        d.id === day.id
+                                          ? {
+                                              ...d,
+                                              exercises: d.exercises.map((item, i) =>
+                                                i === idx
+                                                  ? {
+                                                      ...item,
+                                                      repsNum: 10,
+                                                      repRangeLabel: '10 reps',
+                                                    }
+                                                  : item
+                                              ),
+                                            }
+                                          : d
+                                      )
+                                    );
+                                  }
+                                }}
+                                className="w-12 rounded-lg border border-stoneborder bg-background py-1 text-center font-mono text-[16px] tabular-nums text-brand focus:border-gothic focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Target Weight */}
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                step="0.5"
+                                aria-label="Carga objetivo"
+                                value={
+                                  ex.targetWeightKg !== undefined && ex.targetWeightKg > 0
+                                    ? ex.targetWeightKg
+                                    : ''
+                                }
+                                placeholder="kg"
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  const parsed = raw === '' ? undefined : parseFloat(raw);
+                                  const nextWeight =
+                                    parsed !== undefined && !isNaN(parsed) && parsed > 0
+                                      ? parsed
+                                      : undefined;
+                                  setActiveManualList((prev) =>
+                                    prev.map((d) =>
+                                      d.id === day.id
+                                        ? {
+                                            ...d,
+                                            exercises: d.exercises.map((item, i) =>
+                                              i === idx ? { ...item, targetWeightKg: nextWeight } : item
+                                            ),
+                                          }
+                                        : d
+                                    )
+                                  );
+                                }}
+                                className="w-14 rounded-lg border border-stoneborder bg-background py-1 text-center font-mono text-[16px] tabular-nums text-gothic font-semibold focus:border-gothic focus:outline-none"
+                              />
+                              <span className="text-[10px] text-brand-muted">kg</span>
+                            </div>
+
+                            {/* Reorder Buttons */}
+                            {day.exercises.length > 1 && (
+                              <div className="flex items-center gap-0.5 border-l border-stoneborder/60 pl-1.5 ml-1">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => moveExerciseInDay(day.id, idx, -1)}
+                                  aria-label="Subir ejercicio"
+                                  className="p-1 text-brand-subtle hover:text-brand disabled:opacity-25 active:scale-90 transition-transform"
+                                >
+                                  <ArrowUp className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === day.exercises.length - 1}
+                                  onClick={() => moveExerciseInDay(day.id, idx, 1)}
+                                  aria-label="Bajar ejercicio"
+                                  className="p-1 text-brand-subtle hover:text-brand disabled:opacity-25 active:scale-90 transition-transform"
+                                >
+                                  <ArrowDown className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Delete Exercise Button */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setActiveManualList((prev) =>
+                                  prev.map((d) =>
+                                    d.id === day.id
+                                      ? {
+                                          ...d,
+                                          exercises: d.exercises.filter((_, i) => i !== idx),
+                                        }
+                                      : d
+                                  )
                                 )
-                              )
-                            }
-                            className="text-brand-subtle hover:text-status-regress p-0.5"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
+                              }
+                              aria-label="Eliminar ejercicio de este día"
+                              className="text-brand-subtle hover:text-status-regress p-1 border-l border-stoneborder/60 pl-2 ml-0.5 active:scale-90 transition-transform"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
+                    <p className="text-[10px] text-brand-subtle flex items-center gap-1.5 pt-0.5 px-1 select-none">
+                      <ArrowLeftRight className="h-2.5 w-2.5 text-gothic/70 shrink-0" />
+                      <span>Desliza las filas a los lados para editar series, reps, kilos y reordenar</span>
+                    </p>
                   </div>
                 )}
 
@@ -1622,7 +1650,11 @@ export function RoutineModalsHost({
           </div>
         </div>
 
-        <AiCoachModal isOpen={aiCoachOpen} onClose={() => setAiCoachOpen(false)} />
+        <AiCoachModal
+          isOpen={aiCoachOpen}
+          onClose={() => setAiCoachOpen(false)}
+          contextHint="routine_manager"
+        />
       </div>,
       document.body
     );

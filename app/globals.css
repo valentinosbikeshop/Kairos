@@ -85,11 +85,11 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* iOS Safe Area Utilities for iPhone Notch & Dynamic Island */
 .ios-header-safe-pt {
-  padding-top: calc(env(safe-area-inset-top, 44px) + 0.75rem);
+  padding-top: calc(env(safe-area-inset-top, 54px) + 0.85rem);
 }
 
 .ios-page-safe-pt {
-  padding-top: calc(env(safe-area-inset-top, 44px) + 1.15rem);
+  padding-top: calc(env(safe-area-inset-top, 54px) + 1.25rem);
 }
 
 .ios-bottom-safe-pb {
@@ -98,4 +98,15 @@ input[type="range"]::-webkit-slider-thumb {
 
 .ios-floating-ai-bottom {
   bottom: calc(env(safe-area-inset-bottom, 20px) + 5.25rem);
+}
+
+/* Smooth Touch & Kinetic Interactions */
+.touch-pan-x {
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.touch-pan-y {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }

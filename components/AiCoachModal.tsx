@@ -7,17 +7,14 @@ import { AiActionSuggestion } from '@/lib/aiChatEngine';
 import { getResolvedWorkoutDefaults, uid } from '@/lib/formatters';
 import { BUILTIN_EXERCISES } from '@/lib/exerciseDatabase';
 import {
-  Bot,
   Check,
-  ChevronDown,
-  Dumbbell,
-  Flame,
   Plus,
   Send,
   Sparkles,
-  Timer,
   X,
 } from 'lucide-react';
+
+export type AiCoachContextHint = 'general' | 'routine_manager' | 'workout' | 'history' | 'timer';
 
 interface ChatMessage {
   id: string;
@@ -30,17 +27,213 @@ interface ChatMessage {
 interface AiCoachModalProps {
   isOpen: boolean;
   onClose: () => void;
+  contextHint?: AiCoachContextHint;
 }
 
-const QUICK_SUGGESTIONS = [
-  '¿Cuánta proteína y agua necesito según mi peso?',
-  '¿Cómo aplicar sobrecarga progresiva sin lesionarme?',
-  'Recomiéndame el mejor ejercicio para deltoide lateral',
-  '¿Cómo estructurar descansos para hipertrofia máxima?',
-  'Biomecánica y ejecución de la Sentadilla Búlgara',
-];
+/**
+ * Parses inline formatting like **bold** and *italic* without leaving raw symbols.
+ */
+function parseInlineFormatting(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const regex = /(\*\*.*?\*\*|\*.*?\*)/g;
+  let lastIdx = 0;
+  let match: RegExpExecArray | null;
 
-export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIdx) {
+      parts.push(text.slice(lastIdx, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith('**') && token.endsWith('**')) {
+      const inner = token.slice(2, -2);
+      parts.push(
+        <strong key={`b_${match.index}`} className="font-semibold text-brand">
+          {inner}
+        </strong>
+      );
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      const inner = token.slice(1, -1);
+      parts.push(
+        <em key={`i_${match.index}`} className="text-brand/90 italic">
+          {inner}
+        </em>
+      );
+    }
+    lastIdx = regex.lastIndex;
+  }
+
+  if (lastIdx < text.length) {
+    parts.push(text.slice(lastIdx));
+  }
+
+  return parts;
+}
+
+/**
+ * Renders structured markdown without raw ### or ***, transforming headings,
+ * bullet lists, numbered steps, and paragraphs into clean Gothic UI components.
+ */
+function FormattedChatMessage({ content }: { content: string }) {
+  const lines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+
+    if (!trimmed) {
+      elements.push(<div key={`spacer_${i}`} className="h-1.5" />);
+      continue;
+    }
+
+    // Markdown Headings (###, ##, #)
+    if (trimmed.startsWith('#')) {
+      const headingClean = trimmed
+        .replace(/^#+\s*/, '')
+        .replace(/^[❖*]+\s*/, '')
+        .replace(/\*\*+/g, '');
+      elements.push(
+        <div
+          key={`h_${i}`}
+          className="font-semibold text-brand text-xs uppercase tracking-wider mt-2 mb-1 flex items-center gap-1.5"
+        >
+          <span className="text-gothic">❖</span>
+          <span>{parseInlineFormatting(headingClean)}</span>
+        </div>
+      );
+      continue;
+    }
+
+    // Bullet points (-, *, •)
+    if (/^[-*•]\s+/.test(trimmed)) {
+      const bulletText = trimmed.replace(/^[-*•]\s+/, '');
+      elements.push(
+        <div
+          key={`li_${i}`}
+          className="flex items-start gap-1.5 text-xs text-brand-muted my-0.5 pl-1"
+        >
+          <span className="text-gothic mt-1 shrink-0 text-[8px]">◆</span>
+          <div className="flex-1 leading-relaxed">
+            {parseInlineFormatting(bulletText)}
+          </div>
+        </div>
+      );
+      continue;
+    }
+
+    // Numbered list items (1. 2. 3.)
+    const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+    if (numMatch) {
+      elements.push(
+        <div
+          key={`num_${i}`}
+          className="flex items-start gap-1.5 text-xs text-brand-muted my-0.5 pl-1"
+        >
+          <span className="font-mono text-gothic font-semibold text-[11px] shrink-0">
+            {numMatch[1]}.
+          </span>
+          <div className="flex-1 leading-relaxed">
+            {parseInlineFormatting(numMatch[2])}
+          </div>
+        </div>
+      );
+      continue;
+    }
+
+    // Standard body paragraph
+    elements.push(
+      <p
+        key={`p_${i}`}
+        className="text-xs leading-relaxed text-brand-muted mb-1 last:mb-0"
+      >
+        {parseInlineFormatting(trimmed)}
+      </p>
+    );
+  }
+
+  return <div className="space-y-0.5">{elements}</div>;
+}
+
+const CONTEXT_CONFIGS: Record<
+  AiCoachContextHint,
+  {
+    badge: string;
+    subtitle: string;
+    getGreeting: (name?: string) => string;
+    suggestions: string[];
+  }
+> = {
+  routine_manager: {
+    badge: 'ARQUITECTURA DE RUTINA',
+    subtitle: 'Consultor de Volumen, Jerarquía y Programación Base',
+    getGreeting: (name?: string) =>
+      `### ❖ KAIROS AI COACH\n**Arquitectura y Optimización de Rutina Base**\n\nHola${
+        name ? ` ${name}` : ''
+      }. Estoy analizando la arquitectura biomecánica de tu rutina base para maximizar tu balance muscular y progresión.\n\nPuedo ayudarte a:\n- **Equilibrar el volumen semanal** por grupo muscular (10 a 20 series directas efectivas respaldadas por la literatura científica).\n- **Optimizar el orden biomecánico** de tus ejercicios según demanda axial del SNC y curvas de longitud-tensión.\n- **Sustituir ejercicios estancados** por variantes con mejor perfil de resistencia y relación estímulo-fatiga.\n- **Ajustar divisiones**: Torso/Pierna, Empuje/Tirón/Pierna o esquemas cíclicos.\n\n¿Qué aspecto de tu rutina base deseas perfeccionar hoy?`,
+    suggestions: [
+      '¿Cómo optimizar el volumen semanal de mi rutina base?',
+      'Recomiéndame el mejor orden de ejercicios para mi día de Torso',
+      '¿Qué ejercicio puedo sustituir para mejorar mi progresión en espalda?',
+      '¿Cuántas series efectivas por grupo muscular debo hacer a la semana?',
+      '¿Cómo alternar días de fuerza máxima con hipertrofia?',
+    ],
+  },
+  workout: {
+    badge: 'SESIÓN EN VIVO',
+    subtitle: 'Consultor Táctico de Entrenamiento en Tiempo Real',
+    getGreeting: (name?: string) =>
+      `### ❖ KAIROS AI COACH\n**Consultor Táctico en Vivo**\n\nHola${
+        name ? ` ${name}` : ''
+      }. Estoy sincronizado con tu entrenamiento de hoy. Puedo asesorarte al instante en:\n- **Biomecánica y rango activo** en tiempo real.\n- **Calibración de RIR/RPE** y tempo excéntrico para maximizar tensión mecánica.\n- **Sustitutos inmediatos** si una máquina está ocupada en el gimnasio.\n- **Descansos intra-serie óptimos** según el sistema neuromuscular.\n\n¿En qué ejercicio o serie necesitas soporte ahora?`,
+    suggestions: [
+      '¿Cuánto tiempo debería descansar exactamente en este ejercicio?',
+      'Sustituto rápido si la máquina que necesito está ocupada',
+      '¿Cómo calibrar si mi serie fue a RIR 1 o RIR 2?',
+      'Biomecánica del rango activo en este movimiento',
+    ],
+  },
+  general: {
+    badge: 'ALTO RENDIMIENTO',
+    subtitle: 'Consultor Científico Integral de Ciencias del Ejercicio y Nutrición',
+    getGreeting: (name?: string) =>
+      `### ❖ KAIROS AI COACH\n**Consultor Científico de Alto Rendimiento**\n\nHola${
+        name ? ` ${name}` : ''
+      }. Como tu consultor científico de cabecera en KAIROS, tengo dominio completo sobre toda la arquitectura de la app y las ciencias del deporte:\n\n- **Biomecánica deportiva y tensión mecánica**: optimización de perfiles de resistencia, brazos de momento y curvas de longitud-tensión.\n- **Culturismo natural, fuerza y calistenia**: sobrecarga progresiva sistemática, autorregulación (RIR/RPE) y periodización avanzada.\n- **Nutrición basada en evidencia**: cálculo exacto de proteínas por peso corporal, hidratación, umbral de leucina y sincronización peri-entrenamiento.\n- **Gestión integral de KAIROS**: si te sugiero ejercicios, podrás **añadirlos con 1 toque a tu entrenamiento o a tu rutina base**.\n\n¿En qué área de tu preparación física o deportiva deseas profundizar hoy?`,
+    suggestions: [
+      '¿Cuánta proteína y agua necesito según mi peso corporal?',
+      '¿Cómo aplicar sobrecarga progresiva sin riesgo de sobreentrenamiento?',
+      'Recomiéndame el mejor ejercicio para deltoide lateral y cómo ejecutarlo',
+      '¿Cómo estructurar descansos para hipertrofia muscular máxima?',
+      'Biomecánica y ejecución técnica de la Sentadilla Búlgara',
+    ],
+  },
+  history: {
+    badge: 'ANÁLISIS HISTÓRICO',
+    subtitle: 'Consultor de Progresión y Cargas Acumuladas',
+    getGreeting: (name?: string) =>
+      `### ❖ KAIROS AI COACH\n**Análisis de Progresión y Cargas Históricas**\n\nHola${
+        name ? ` ${name}` : ''
+      }. Estoy listo para revisar tu historial de entrenamientos, 1RM estimadas y volumen acumulado para detectar estancamientos o fatiga excesiva. ¿Qué análisis deseas realizar?`,
+    suggestions: [
+      '¿Cómo interpretar mi progresión de 1RM estimada?',
+      '¿Cuándo es momento oportuno para una semana de descarga (deload)?',
+    ],
+  },
+  timer: {
+    badge: 'TEMPORIZADORES Y FISIOLOGÍA',
+    subtitle: 'Consultor de Densidad, Intervalos y Recuperación',
+    getGreeting: (name?: string) =>
+      `### ❖ KAIROS AI COACH\n**Fisiología del Descanso y Temporizadores**\n\nHola${
+        name ? ` ${name}` : ''
+      }. Puedo ayudarte a calibrar los tiempos de descanso ideales según el sistema energético (fosfágenos, glucolítico o aeróbico) o estructurar protocolos de intervalos (HIIT, Tabata, EMOM). ¿En qué puedo asesorarte?`,
+    suggestions: [
+      '¿Cuánto descansar entre series de hipertrofia vs fuerza máxima?',
+      'Protocolo HIIT óptimo para quemar grasa sin perder masa muscular',
+    ],
+  },
+};
+
+export function AiCoachModal({ isOpen, onClose, contextHint = 'general' }: AiCoachModalProps) {
   const {
     user,
     profile,
@@ -54,13 +247,13 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
 
   const { startRestTimer } = useTimerEngine();
 
+  const activeConfig = CONTEXT_CONFIGS[contextHint] || CONTEXT_CONFIGS.general;
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     {
       id: 'init_msg',
       role: 'assistant',
-      content: `### ❖ KAIROS AI COACH\n**Consultor Científico de Alto Rendimiento**\n\nHola${
-        user?.displayName ? ` ${user.displayName}` : ''
-      }. Estoy integrado para responder tus dudas sobre **biomecánica de ejercicios, hipertrofia muscular, nutrición basada en evidencia, calistenia y optimización de tu rutina**.\n\nSi te recomiendo ejercicios, podrás **añadirlos con 1 toque a tu entrenamiento o rutina base**. ¿En qué puedo asesorarte hoy?`,
+      content: activeConfig.getGreeting(user?.displayName || user?.username),
       timestamp: Date.now(),
     },
   ]);
@@ -76,8 +269,23 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
+  // Re-synchronize initial message if opening fresh on a new context
   useEffect(() => {
     if (isOpen) {
+      setMessages((prev) => {
+        if (prev.length <= 1) {
+          return [
+            {
+              id: 'init_msg',
+              role: 'assistant',
+              content: activeConfig.getGreeting(user?.displayName || user?.username),
+              timestamp: Date.now(),
+            },
+          ];
+        }
+        return prev;
+      });
+
       setTimeout(() => {
         scrollRef.current?.scrollTo({
           top: scrollRef.current.scrollHeight,
@@ -85,7 +293,7 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
         });
       }, 100);
     }
-  }, [isOpen, messages]);
+  }, [isOpen, contextHint, user, activeConfig]);
 
   if (!isOpen) return null;
 
@@ -128,6 +336,7 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
             routineDaysCount: routine?.days?.filter((d) => !d.isRestDay).length,
             activeWorkoutTitle: activeWorkout.title,
             activeWorkoutExerciseNames: activeExNames,
+            currentScreen: contextHint,
           },
         }),
       });
@@ -192,12 +401,12 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
       if (!exName) return;
 
       const targetMode = action.payload.mode || 'hypertrophy';
-      const existingBlock = activeWorkout.blocks.find((b) => b.mode === targetMode) || activeWorkout.blocks[0];
+      const existingBlock =
+        activeWorkout.blocks.find((b) => b.mode === targetMode) || activeWorkout.blocks[0];
 
       let blockId = existingBlock?.id;
       if (!blockId) {
         addBlockToWorkout(targetMode);
-        // Fallback to activeWorkout's block next frame
         setTimeout(() => {
           const freshCatalog = BUILTIN_EXERCISES.find(
             (c) => c.id === action.payload.catalogId
@@ -225,7 +434,6 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
     }
 
     if (action.type === 'add_to_routine') {
-      // Show routine day selector
       setRoutineDayTarget({ action });
     }
   };
@@ -285,12 +493,12 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
                 <span className="font-gothic text-xs font-bold tracking-[0.18em] text-brand">
                   KAIROS AI
                 </span>
-                <span className="rounded-full bg-gothic/25 border border-gothic/40 px-1.5 py-0.2 text-[9px] font-mono text-gothic">
-                  CIENCIA
+                <span className="rounded-full bg-gothic/25 border border-gothic/40 px-1.5 py-0.2 text-[9px] font-mono text-gothic font-semibold">
+                  {activeConfig.badge}
                 </span>
               </div>
               <p className="text-[10px] text-brand-muted">
-                Consultor Científico de Entrenamiento y Nutrición
+                {activeConfig.subtitle}
               </p>
             </div>
           </div>
@@ -333,13 +541,17 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
               )}
 
               <div
-                className={`max-w-[90%] rounded-2xl p-3 text-xs leading-relaxed shadow-sm whitespace-pre-line ${
+                className={`max-w-[92%] rounded-2xl p-3 text-xs leading-relaxed shadow-sm ${
                   m.role === 'user'
                     ? 'bg-gothic/25 text-brand border border-gothic/40'
                     : 'bg-[#14111C] text-brand-muted border border-stoneborder/80'
                 }`}
               >
-                {m.content}
+                {m.role === 'assistant' ? (
+                  <FormattedChatMessage content={m.content} />
+                ) : (
+                  <span className="whitespace-pre-line">{m.content}</span>
+                )}
               </div>
 
               {/* Action Suggestion Pills from AI */}
@@ -380,7 +592,7 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
               Preguntas sugeridas:
             </span>
             <div className="mt-1.5 flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-              {QUICK_SUGGESTIONS.map((sug, i) => (
+              {activeConfig.suggestions.map((sug, i) => (
                 <button
                   key={i}
                   type="button"
@@ -407,7 +619,7 @@ export function AiCoachModal({ isOpen, onClose }: AiCoachModalProps) {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Haz tu pregunta a la IA (ej: '¿Cómo hacer sentadilla búlgara?')"
+              placeholder="Haz tu pregunta a la IA (ej: '¿Cómo optimizar mi rutina?')"
               className="flex-1 rounded-xl border border-stoneborder bg-background px-3.5 py-2.5 text-xs text-brand placeholder-brand-subtle focus:border-gothic focus:outline-none"
             />
             <button

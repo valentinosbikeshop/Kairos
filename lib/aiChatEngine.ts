@@ -15,6 +15,7 @@ export interface AiChatContext {
   activeWorkoutTitle?: string;
   activeWorkoutExerciseNames?: string[];
   recentSessionsCount?: number;
+  currentScreen?: 'general' | 'routine_manager' | 'workout' | 'history' | 'timer' | string;
 }
 
 export interface AiActionSuggestion {
@@ -192,7 +193,31 @@ export async function generateScientificAiResponse(
     };
   }
 
-  // 2. SOBRECARGA PROGRESIVA Y RIR/RPE
+  // 2. ARQUITECTURA DE RUTINA, VOLUMEN Y PERIODIZACIÓN
+  if (
+    context.currentScreen === 'routine_manager' ||
+    /\b(?:rutina|volumen semanal|orden de ejercicios|cuantas series|division|frecuencia|torso|pierna|empuje|tiron|ppl|split)\b/i.test(q)
+  ) {
+    const content = `### Arquitectura de Rutina & Volumen Óptimo (*Schoenfeld, 2017; Israetel, 2021*)\n\n` +
+      `Para estructurar una rutina base de máxima eficiencia hipertrófica en **KAIROS**:\n\n` +
+      `1. **Volumen Semanal por Músculo (Series Efectivas a RIR 1–2):**\n` +
+      `   - **Mantenimiento (MV):** 6–8 series semanales.\n` +
+      `   - **Volumen Óptimo de Ganancias (MEV a MAV):** **10 a 20 series semanales** por grupo muscular, distribuidas en 2 sesiones semanales (Frecuencia 2).\n` +
+      `   - **Límite de Sesión:** No programes más de 8–10 series por músculo en un mismo día; a partir de ahí se convierte en "volumen basura".\n\n` +
+      `2. **Jerarquía del Orden de Ejercicios:**\n` +
+      `   - **Primero:** Ejercicios multiarticulares con alta demanda de estabilidad axial (ej. Press Militar, Sentadilla, Peso Muerto Rumano).\n` +
+      `   - **Segundo:** Compuestos guiados en máquina o polea (ej. Press en Máquina, Jalones al Pecho, Remo en Polea).\n` +
+      `   - **Final:** Aislamiento de bajo coste neural (ej. Elevaciones Laterales, Curl Bíceps, Extensiones de Tríceps).\n\n` +
+      `3. **Organización en KAIROS:** Puedes desplazar horizontalmente cada fila de ejercicio para ajustar series, repeticiones y kilos previstos, o usar las flechas para reordenar el flujo exacto de tu sesión.`;
+
+    return {
+      content,
+      suggestedActions: extractActionSuggestionsFromText(content, query),
+      confidence: 96,
+    };
+  }
+
+  // 3. SOBRECARGA PROGRESIVA Y RIR/RPE
   if (/\b(?:sobrecarga progresiva|rir|rpe|al fallo|fallo muscular|progresar|estancado|estancamiento)\b/i.test(q)) {
     const content = `### Principio de Sobrecarga Progresiva & Proximidad al Fallo (*Beardsley, 2020; Robinson et al., 2024*)\n\n` +
       `Para generar tensión mecánica máxima (el motor primario del crecimiento muscular), debes aplicar estas reglas en **KAIROS**:\n\n` +

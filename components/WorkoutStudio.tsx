@@ -217,11 +217,11 @@ export function WorkoutStudio() {
   );
 
   return (
-    <div className="pb-36">
+    <div className="pb-20">
       {/* ================= SERENE GOTHIC TOP BAR (NO TOP-LEFT STOPWATCH) ================= */}
-      <header className="sticky top-0 z-30 border-b border-stoneborder bg-background/95 px-5 ios-header-safe-pt pb-3 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-stoneborder bg-[#0E0D10] px-5 ios-header-safe-pt pb-3 transition-colors duration-200">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-gothic text-base font-semibold tracking-[0.22em] text-brand">
+          <span className="font-gothic text-base font-semibold tracking-[0.22em] text-brand select-none">
             KAIROS
           </span>
 
@@ -232,7 +232,7 @@ export function WorkoutStudio() {
             <button
               type="button"
               onClick={() => setOpenRoutineModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-stoneborder bg-surface px-3 py-1.5 text-xs font-medium text-brand-muted hover:border-gothic/50 hover:text-brand active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-stoneborder bg-surface px-3 py-1.5 text-xs font-medium text-brand-muted hover:border-gothic/50 hover:text-brand active:scale-95 transition-all duration-150"
             >
               <CalendarCheck className="h-3.5 w-3.5 text-gothic" />
               <span>Mi Rutina</span>

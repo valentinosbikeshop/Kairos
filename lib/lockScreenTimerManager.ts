@@ -72,28 +72,12 @@ export function stopBackgroundWorkerClock(): void {
 }
 
 /**
- * Plays an inaudible audio loop. This instructs iOS CoreAudio and Android AudioFlinger
- * that Kairos is actively outputting sound, keeping the audio session alive in the lock screen
- * so countdown beeps and completion bells are heard at full volume.
+ * Mantiene el ciclo de vida del temporizador sin interrumpir la música de fondo
+ * (Apple Music, Spotify). NO usamos un elemento <audio> HTML aquí para no robar el foco
+ * de audio del sistema operativo iOS/Android.
  */
 export function startSilentBackgroundAudio(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (!backgroundAudioEl) {
-      backgroundAudioEl = new Audio(SILENT_WAV_DATA_URI);
-      backgroundAudioEl.loop = true;
-      backgroundAudioEl.volume = 0.01;
-      backgroundAudioEl.preload = 'auto';
-    }
-    if (backgroundAudioEl.paused) {
-      const promise = backgroundAudioEl.play();
-      if (promise !== undefined) {
-        promise.catch(() => undefined);
-      }
-    }
-  } catch {
-    // Ignore autoplay restriction before user gesture
-  }
+  // Sin <audio>.play() para garantizar mezcla pura sobre música del usuario sin pausas
 }
 
 export function stopSilentBackgroundAudio(): void {

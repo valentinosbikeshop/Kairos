@@ -53,9 +53,9 @@ class KairosAudioEngine {
   private wavCache = new Map<string, string>();
 
   /**
-   * iOS: 'ambient' mezcla los pitidos con Apple Music / Spotify sin pausar la música.
-   * Cuando suena un aviso del timer, conmutamos brevemente a 'transient' para que iOS
-   * atenúe (ducking) ligeramente Apple Music durante el pitido y luego restaure el volumen al 100%.
+   * iOS: 'ambient' mezcla los pitidos del temporizador con Apple Music / Spotify
+   * sin pausar la música en ningún momento. Los sonidos de la app se reproducen
+   * simultáneamente sobre la música del usuario.
    */
   public configureAmbientSession(): void {
     if (typeof navigator === 'undefined') return;
@@ -72,43 +72,17 @@ class KairosAudioEngine {
   }
 
   /**
-   * iOS: 'playback' permite que el sonido continúe sonando con la pantalla bloqueada
-   * e ignora el interruptor de silencio (Ringer switch) mientras corre un temporizador.
+   * En KAIROS priorizamos que el usuario entrene con su propia música (Apple Music, Spotify).
+   * Mantenemos permanentemente la sesión en 'ambient' para evitar que iOS interrumpa
+   * o pause la música de fondo.
    */
   public configurePlaybackSession(): void {
-    if (typeof navigator === 'undefined') return;
-    if ('audioSession' in navigator) {
-      try {
-        const nav = navigator as NavigatorWithAudioSession;
-        if (nav.audioSession && nav.audioSession.type !== 'playback') {
-          nav.audioSession.type = 'playback';
-        }
-      } catch {
-        // Ignore
-      }
-    }
+    this.configureAmbientSession();
   }
 
-  private pulseTransientAudioSession(durationMs: number): void {
-    if (typeof navigator === 'undefined' || !('audioSession' in navigator)) return;
-    try {
-      const nav = navigator as NavigatorWithAudioSession;
-      if (nav.audioSession) {
-        nav.audioSession.type = 'transient';
-        if (this.transientResetTimer) clearTimeout(this.transientResetTimer);
-        this.transientResetTimer = setTimeout(() => {
-          try {
-            if (nav.audioSession) {
-              nav.audioSession.type = 'ambient';
-            }
-          } catch {
-            // Ignore
-          }
-        }, Math.max(180, durationMs));
-      }
-    } catch {
-      // Ignore
-    }
+  private pulseTransientAudioSession(_durationMs: number): void {
+    // Mantenemos sesión 'ambient' permanente para mezcla perfecta sobre Apple Music sin pausas
+    this.configureAmbientSession();
   }
 
   private buildWavDataUri(
@@ -489,11 +463,8 @@ class KairosAudioEngine {
     this.pulseTransientAudioSession(260);
 
     const ctx = this.unlock();
-    if (!ctx || (ctx.state as string) !== 'running') {
-      const freq = this.settings.profile === 'tactical' ? 1200 : 880;
-      this.playFallbackWav([{ freq, startSec: 0, durSec: 0.13, amp: 0.75 }], 0.16);
-    }
-
+    // En navegadores modernos sintetizamos mediante Web Audio con sesión 'ambient'.
+    // Evitamos llamar a new Audio().play() para no interrumpir Apple Music o Spotify.
     this.withRunningContext((c, _master, now) =>
       this.synthCountdownPip(c, now, secondRemaining)
     );
@@ -579,21 +550,8 @@ class KairosAudioEngine {
 
     this.pulseTransientAudioSession(750);
 
-    const ctx = this.unlock();
-    if (!ctx || (ctx.state as string) !== 'running') {
-      const tones =
-        cueType === 'rest'
-          ? [
-              { freq: 880, startSec: 0, durSec: 0.22, amp: 0.72 },
-              { freq: 659.25, startSec: 0.15, durSec: 0.28, amp: 0.72 },
-            ]
-          : [
-              { freq: 880, startSec: 0, durSec: 0.42, amp: 0.72 },
-              { freq: 1318.5, startSec: 0.06, durSec: 0.45, amp: 0.72 },
-            ];
-      this.playFallbackWav(tones, 0.56);
-    }
-
+    this.unlock();
+    // Síntesis Web Audio directa con categoría 'ambient' para mezcla limpia sobre la música
     this.withRunningContext((c, _master, now) => this.synthCompletionCue(c, now, cueType));
   }
 

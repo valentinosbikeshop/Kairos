@@ -55,7 +55,7 @@ export function TimerProView() {
     requestNotificationPermission,
   } = useTimerEngine();
 
-  const [labTab, setLabTab] = useState<TimerKind>('rest');
+  const [labTab, setLabTab] = useState<TimerKind>('intervals');
   const [customRestSec, setCustomRestSec] = useState(90);
 
   // Intervals

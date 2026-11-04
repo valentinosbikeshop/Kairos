@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { RoutineDayPlan } from '@/types/kairos';
 import { useKairos } from '@/lib/kairosContext';
 import { useTimerEngine } from '@/components/TimerEngine';
 import { AiActionSuggestion } from '@/lib/aiChatEngine';
@@ -28,6 +29,8 @@ interface AiCoachModalProps {
   isOpen: boolean;
   onClose: () => void;
   contextHint?: AiCoachContextHint;
+  routineDays?: RoutineDayPlan[];
+  onApplyRoutineDays?: (updatedDays: RoutineDayPlan[]) => void;
 }
 
 /**
@@ -233,7 +236,13 @@ const CONTEXT_CONFIGS: Record<
   },
 };
 
-export function AiCoachModal({ isOpen, onClose, contextHint = 'general' }: AiCoachModalProps) {
+export function AiCoachModal({
+  isOpen,
+  onClose,
+  contextHint = 'general',
+  routineDays,
+  onApplyRoutineDays,
+}: AiCoachModalProps) {
   const {
     user,
     profile,
@@ -333,7 +342,8 @@ export function AiCoachModal({ isOpen, onClose, contextHint = 'general' }: AiCoa
             userGoal: profile?.primaryGoal,
             experienceLevel: profile?.experienceLevel,
             routineName: routine?.name,
-            routineDaysCount: routine?.days?.filter((d) => !d.isRestDay).length,
+            routineDaysCount: (routineDays || routine?.days)?.filter((d) => !d.isRestDay).length,
+            routineDays: routineDays || routine?.days,
             activeWorkoutTitle: activeWorkout.title,
             activeWorkoutExerciseNames: activeExNames,
             currentScreen: contextHint,
@@ -429,6 +439,19 @@ export function AiCoachModal({ isOpen, onClose, contextHint = 'general' }: AiCoa
       }
 
       setActionFeedback(`✓ "${exName}" añadido a tu entrenamiento activo`);
+      setTimeout(() => setActionFeedback(null), 3500);
+      return;
+    }
+
+    if (action.type === 'apply_routine_cleanup' && action.payload.cleanedDays) {
+      const cleaned = action.payload.cleanedDays;
+      if (onApplyRoutineDays) {
+        onApplyRoutineDays(cleaned);
+      }
+      if (routine) {
+        saveUserRoutine({ ...routine, days: cleaned }, false);
+      }
+      setActionFeedback('✓ Nombres limpios y cargas asignadas con éxito a tu rutina');
       setTimeout(() => setActionFeedback(null), 3500);
       return;
     }

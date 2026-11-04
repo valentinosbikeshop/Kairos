@@ -1,4 +1,4 @@
-import { ExerciseCatalogItem, RirValue, TrainingMode } from '@/types/kairos';
+import { ExerciseCatalogItem, RirValue, RoutineDayPlan, TrainingMode } from '@/types/kairos';
 import { BUILTIN_EXERCISES, normalizeSearchText, smartSearchExercises } from '@/lib/exerciseDatabase';
 
 export interface ExerciseClassificationResult {
@@ -565,4 +565,64 @@ function formatCapitalizedExercise(str: string): string {
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     })
     .join(' ');
+}
+
+export interface RoutineExerciseCleanupResult {
+  cleanedDays: RoutineDayPlan[];
+  changes: {
+    dayLabel: string;
+    originalName: string;
+    cleanedName: string;
+    weightExtracted?: number;
+    setsExtracted?: number;
+    repsExtracted?: number;
+  }[];
+}
+
+/**
+ * Batch cleaner for all exercises in a routine.
+ * Strips noise, embedded loads ("45kg", "120 kg"), sets notes (": 2. Espalda"),
+ * and sets/reps artifacts from exercise names, placing them into structured fields.
+ */
+export function cleanAllRoutineExercises(days: RoutineDayPlan[]): RoutineExerciseCleanupResult {
+  const changes: RoutineExerciseCleanupResult['changes'] = [];
+
+  const cleanedDays = days.map((day) => ({
+    ...day,
+    exercises: day.exercises.map((ex) => {
+      const tokens = extractStructuredExerciseTokens(ex.name);
+      const cleanName = tokens.cleanName || ex.name;
+      const isNameDifferent = cleanName !== ex.name;
+      const hasExtractedWeight =
+        tokens.targetWeightKg !== undefined && (!ex.targetWeightKg || ex.targetWeightKg <= 0);
+      const hasExtractedSets =
+        tokens.sets !== undefined && (!ex.sets || ex.sets <= 1);
+      const hasExtractedReps =
+        tokens.repsNum !== undefined && (!ex.repsNum || ex.repsNum <= 1);
+
+      if (isNameDifferent || hasExtractedWeight || hasExtractedSets || hasExtractedReps) {
+        changes.push({
+          dayLabel: day.label,
+          originalName: ex.name,
+          cleanedName: cleanName,
+          weightExtracted: hasExtractedWeight ? tokens.targetWeightKg : undefined,
+          setsExtracted: hasExtractedSets ? tokens.sets : undefined,
+          repsExtracted: hasExtractedReps ? tokens.repsNum : undefined,
+        });
+
+        return {
+          ...ex,
+          name: cleanName,
+          targetWeightKg: hasExtractedWeight ? tokens.targetWeightKg : ex.targetWeightKg,
+          sets: hasExtractedSets ? tokens.sets! : ex.sets,
+          repsNum: hasExtractedReps ? tokens.repsNum! : ex.repsNum,
+          repRangeLabel: tokens.repRangeLabel || ex.repRangeLabel,
+        };
+      }
+
+      return ex;
+    }),
+  }));
+
+  return { cleanedDays, changes };
 }

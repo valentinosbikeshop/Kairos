@@ -1,6 +1,6 @@
-import { ExerciseCatalogItem, TrainingMode, UserProfile, UserRoutine, WorkoutSession } from '@/types/kairos';
+import { ExerciseCatalogItem, RoutineDayPlan, TrainingMode, UserProfile, UserRoutine, WorkoutSession } from '@/types/kairos';
 import { BUILTIN_EXERCISES } from '@/lib/exerciseDatabase';
-import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
+import { cleanAllRoutineExercises, resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
 import { getProfileAge } from '@/lib/formatters';
 
 export interface AiChatContext {
@@ -12,6 +12,7 @@ export interface AiChatContext {
   experienceLevel?: string;
   routineName?: string;
   routineDaysCount?: number;
+  routineDays?: RoutineDayPlan[];
   activeWorkoutTitle?: string;
   activeWorkoutExerciseNames?: string[];
   recentSessionsCount?: number;
@@ -21,7 +22,12 @@ export interface AiChatContext {
 export interface AiActionSuggestion {
   id: string;
   label: string;
-  type: 'add_to_active_workout' | 'add_to_routine' | 'start_rest_timer' | 'view_biomechanics';
+  type:
+    | 'add_to_active_workout'
+    | 'add_to_routine'
+    | 'start_rest_timer'
+    | 'view_biomechanics'
+    | 'apply_routine_cleanup';
   payload: {
     exerciseName?: string;
     catalogId?: string;
@@ -30,6 +36,7 @@ export interface AiActionSuggestion {
     muscleGroup?: string;
     sets?: number;
     reps?: number;
+    cleanedDays?: RoutineDayPlan[];
   };
 }
 
@@ -164,7 +171,49 @@ export async function generateScientificAiResponse(
   const creatineGrams = 5;
   const waterLiters = (weightKg * 0.04).toFixed(1);
 
-  // 1. PROTEÍNA Y NUTRICIÓN
+  // 1. LIMPIEZA INTELIGENTE Y EXTRACCIÓN DE NOMBRES/CARGAS DE RUTINA
+  const isRoutineCleanupQuery =
+    /\b(?:limpi(?:a|ar|ame)?|quit(?:a|ar|ame)?|corregi(?:r|me)?|elimin(?:a|ar)?|arregl(?:a|ar)?|borr(?:a|ar)?|nombre[s]?\s*(?:de\s*)?ejercicio|texto\s*extra|ruido|45\s*kg|120\s*kg|kilos?\s*(?:en|del|al)|rescat[oó]|adjunt[oó])\b/i.test(q);
+
+  if (isRoutineCleanupQuery && context.routineDays && context.routineDays.length > 0) {
+    const { cleanedDays, changes } = cleanAllRoutineExercises(context.routineDays);
+
+    let content = `### Limpieza Inteligente de Ejercicios y Asignación de Cargas\n\n`;
+    if (changes.length > 0) {
+      content += `He analizado los ejercicios de tu rutina base y limpiado todo el ruido residual en los nombres (kilos pegados, notas de series y secciones filtradas al importar). Extraje las cargas y series a sus casillas individuales:\n\n`;
+      changes.forEach((c) => {
+        const extras: string[] = [];
+        if (c.weightExtracted) extras.push(`Carga: ${c.weightExtracted} kg`);
+        if (c.setsExtracted) extras.push(`Series: ${c.setsExtracted}`);
+        if (c.repsExtracted) extras.push(`Reps: ${c.repsExtracted}`);
+        const extraNote = extras.length > 0 ? ` *(${extras.join(' · ')})*` : '';
+        content += `- **${c.originalName}** ➔ **${c.cleanedName}**${extraNote}\n`;
+      });
+      content += `\nToca el botón interactivo abajo para aplicar estos nombres limpios y cargas a tu rutina inmediatamente:`;
+    } else {
+      content += `Revisé minuciosamente todos los ejercicios de tu rutina base y no detecté texto extra ni kilos incrustados en sus nombres. Recuerda que también puedes pulsar sobre el nombre de cualquier ejercicio en la lista para editarlo manualmente como prefieras.`;
+    }
+
+    const suggestedActions: AiActionSuggestion[] = [];
+    if (changes.length > 0) {
+      suggestedActions.push({
+        id: 'act_apply_clean_routine',
+        label: `✨ Aplicar Nombres Limpios y Cargas a mi Rutina (${changes.length} cambios)`,
+        type: 'apply_routine_cleanup',
+        payload: {
+          cleanedDays,
+        },
+      });
+    }
+
+    return {
+      content,
+      suggestedActions,
+      confidence: 99,
+    };
+  }
+
+  // 2. PROTEÍNA Y NUTRICIÓN
   if (/\b(?:proteina|cuanta proteina|macros|gramos de proteina|nutricion|dieta|calorias|superavit|deficit)\b/i.test(q)) {
     let content = `### Prescripción Nutricional Basada en Evidencia\n\n`;
 
@@ -193,10 +242,9 @@ export async function generateScientificAiResponse(
     };
   }
 
-  // 2. ARQUITECTURA DE RUTINA, VOLUMEN Y PERIODIZACIÓN
+  // 3. ARQUITECTURA DE RUTINA, VOLUMEN Y PERIODIZACIÓN
   if (
-    context.currentScreen === 'routine_manager' ||
-    /\b(?:rutina|volumen semanal|orden de ejercicios|cuantas series|division|frecuencia|torso|pierna|empuje|tiron|ppl|split)\b/i.test(q)
+    /\b(?:volumen semanal|orden de ejercicios|cuantas series|division|frecuencia|como armar|como organizar|como estructurar|split|torso\s*pierna|ppl)\b/i.test(q)
   ) {
     const content = `### Arquitectura de Rutina & Volumen Óptimo (*Schoenfeld, 2017; Israetel, 2021*)\n\n` +
       `Para estructurar una rutina base de máxima eficiencia hipertrófica en **KAIROS**:\n\n` +

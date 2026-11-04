@@ -25,6 +25,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const normQuery = lastUserMessage.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const isRoutineCleanupQuery =
+      /\b(?:limpi(?:a|ar|ame)?|quit(?:a|ar|ame)?|corregi(?:r|me)?|elimin(?:a|ar)?|arregl(?:a|ar)?|borr(?:a|ar)?|nombre[s]?\s*(?:de\s*)?ejercicio|texto\s*extra|ruido|45\s*kg|120\s*kg|kilos?\s*(?:en|del|al)|rescat[oó]|adjunt[oó])\b/i.test(
+        normQuery
+      );
+
+    // Fast-path: When user explicitly asks to clean exercise names or fix noise from importing routine
+    if (isRoutineCleanupQuery && context.routineDays && context.routineDays.length > 0) {
+      const localCleanupResult = await generateScientificAiResponse(lastUserMessage, context);
+      return NextResponse.json({
+        ok: true,
+        message: {
+          role: 'assistant',
+          content: localCleanupResult.content,
+        },
+        suggestedActions: localCleanupResult.suggestedActions,
+      });
+    }
+
     const geminiKey = process.env.GEMINI_API_KEY;
 
     if (geminiKey) {
@@ -45,9 +64,10 @@ Contexto actual del usuario:
 - Objetivo primario: ${context.userGoal || 'Hipertrofia y rendimiento atlético'}
 - Nivel de experiencia: ${context.experienceLevel || 'Intermedio'}
 - Rutina base activa: ${context.routineName || 'No definida'} (Días activos: ${context.routineDaysCount || 'N/A'})
+${context.routineDays?.length ? `- Ejercicios actuales en rutina: ${JSON.stringify(context.routineDays.map((d) => ({ dia: d.label, ejercicios: d.exercises.map((e) => e.name) })))}` : ''}
 - Entrenamiento de hoy: ${context.activeWorkoutTitle || 'Ninguno en curso'}
 - Pantalla donde se abrió la consulta: ${context.currentScreen || 'General'}
-${context.currentScreen === 'routine_manager' ? '- ATENCIÓN: El usuario se encuentra en la pantalla de "Gestionar Mi Rutina". Prioriza recomendaciones sobre estructuración de días, balance de volumen semanal, selección y orden de ejercicios, sustitución de variantes o cadencia de descanso.' : ''}
+${context.currentScreen === 'routine_manager' ? '- ATENCIÓN: El usuario se encuentra en la pantalla de "Gestionar Mi Rutina". Responde y enfócate exactamente en lo que solicita para su rutina.' : ''}
 ${context.currentScreen === 'workout' ? '- ATENCIÓN: El usuario se encuentra en pleno entrenamiento activo. Prioriza respuestas directas, sustitutos inmediatos por máquinas ocupadas, descansos en segundos y ajustes de RIR/tempo.' : ''}
 
 DIRECTIVAS INMUTABLES:
@@ -112,8 +132,8 @@ DIRECTIVAS INMUTABLES:
       },
       suggestedActions: localResult.suggestedActions,
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Error al procesar consulta con IA.';
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error interno del servidor.';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

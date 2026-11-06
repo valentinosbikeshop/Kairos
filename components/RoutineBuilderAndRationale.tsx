@@ -1339,7 +1339,7 @@ export function RoutineSetupConfigurator({
                 {/* Synchronized horizontal swipe container for ALL exercises of this day */}
                 {day.exercises.length > 0 && (
                   <div className="space-y-1.5">
-                    <div className="overflow-x-auto no-scrollbar scroll-smooth touch-pan-x rounded-xl border border-stoneborder/70 bg-surface/40 p-2 shadow-inner">
+                    <div className="overflow-x-auto no-scrollbar scroll-smooth touch-auto overscroll-x-contain rounded-xl border border-stoneborder/70 bg-surface/40 p-2 shadow-inner">
                       <div className="min-w-[520px] space-y-2">
                         {day.exercises.map((ex, idx) => (
                           <div

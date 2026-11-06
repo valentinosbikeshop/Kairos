@@ -7,6 +7,8 @@ import {
   RoutineExtractionResult,
 } from '@/lib/routineFileExtractor';
 import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
+import { generateWithGeminiCascade, parseCleanJsonFromAi } from '@/lib/geminiClient';
+import { inferWeekdayIndexFromText } from '@/lib/aiRoutineEngine';
 import { toLocalDateKey, uid } from '@/lib/formatters';
 import {
   RoutineDayPlan,
@@ -24,27 +26,25 @@ interface PdfTextItemLike {
 }
 
 /**
- * Uses Gemini AI to understand contextual routine notes, extract performance loads (targetWeightKg),
- * preserve all biomechanical and equipment details ("en máquina", "en smith", "con mancuernas"),
+ * Uses Gemini AI (via Anti-Saturation Cascade) to understand contextual routine notes,
+ * extract performance loads (targetWeightKg), preserve all biomechanical and equipment details,
  * and cleanly separate adjacent workout sections without header contamination.
  */
 async function extractStructuredRoutineWithGemini(
   rawText: string,
   fileName?: string
 ): Promise<RoutineExtractionResult | null> {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (!geminiKey) return null;
-
   try {
     const prompt =
       `Eres el motor de análisis y extracción de entrenamientos de KAIROS (app de fitness y biomecánica avanzada).\n` +
-      `Tu objetivo es transformar el texto sin formato provisto por el usuario (copiado de notas, WhatsApp, o portapapeles) en una rutina estructurada y limpia.\n\n` +
+      `Tu objetivo es transformar el texto sin formato provisto por el usuario (copiado de notas, WhatsApp, PDF o portapapeles) en una rutina estructurada y limpia.\n\n` +
       `REGLAS CRÍTICAS DE EXTRACCIÓN:\n` +
       `1. Nombres de ejercicios: Conserva SIEMPRE detalles biomecánicos y de equipamiento (ej: 'en máquina', 'con mancuernas', 'en polea', 'en smith', 'agarre neutro', 'unilateral', 'inclinado 30°'). NUNCA elimines estos modificadores del nombre.\n` +
       `2. Eliminación de RUIDO en el nombre: NUNCA dejes en el nombre cargas/pesos (ej: '120kg'), series/reps (ej: ': 2', '4x10'), ni nombres de secciones o días adyacentes (ej: '2. Espalda').\n` +
       `3. Cargas y Pesos (targetWeightKg): Si el texto indica el peso con el que entrena o levantó el usuario (ej: '120kg', '80kg', '40 lbs'), extráelo como número en 'targetWeightKg'.\n` +
       `4. Series y Repeticiones: Si el texto dice '120kg : 2' significa 2 series con 120kg. Extrae 'sets', 'repsNum', 'repRangeLabel', 'rir' ('0'|'1'|'2'|'3'), 'restSeconds'.\n` +
-      `5. Agrupación por Días o Secciones: Si hay títulos como '2. Espalda', 'Lunes - Pecho', 'Día 1: Torso', crea un día o sección separado para cada uno. Jamás agregues el título de un día dentro del nombre de un ejercicio.\n\n` +
+      `5. Agrupación por Días: Extrae TODOS los días presentes en el texto con TODOS sus ejercicios correspondientes. Si un título es un subgrupo muscular dentro del mismo día (ej: '1. Pecho' y '2. Espalda' dentro de un día de Torso), agrúpalos en el día correspondiente o en días separados completos, pero NUNCA dejes un día de entrenamiento con 'exercises: []' vacío.\n` +
+      `6. Si los días son días de la semana (Lunes, Martes, Miércoles, Jueves, Viernes, Sábado, Domingo), pon "scheduleType": "weekday". Si son Día 1, Día 2, Torso, Pierna, etc., pon "scheduleType": "cyclic".\n\n` +
       `Texto a analizar:\n"""\n${rawText.slice(0, 8000)}\n"""\n\n` +
       `Responde ÚNICAMENTE un JSON con esta estructura exacta (sin markdown ni explicaciones adicionales):\n` +
       `{\n` +
@@ -53,7 +53,7 @@ async function extractStructuredRoutineWithGemini(
       `  "days": [\n` +
       `    {\n` +
       `      "label": "Día 1",\n` +
-      `      "focusTitle": "Pecho y Tríceps",\n` +
+      `      "focusTitle": "Torso",\n` +
       `      "isRestDay": false,\n` +
       `      "primaryMode": "hypertrophy",\n` +
       `      "exercises": [\n` +
@@ -71,77 +71,106 @@ async function extractStructuredRoutineWithGemini(
       `  ]\n` +
       `}`;
 
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: 'application/json',
-          },
-        }),
-      }
-    );
+    const aiRes = await generateWithGeminiCascade({
+      prompt,
+      tier: 'pro',
+      temperature: 0.1,
+      responseMimeType: 'application/json',
+      cacheTtlMs: 30 * 60_000,
+    });
 
-    if (!resp.ok) return null;
-    const json = (await resp.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-    };
-    const rawAi = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!rawAi) return null;
+    const parsedData = parseCleanJsonFromAi<{
+      routineName?: string;
+      scheduleType?: RoutineScheduleType;
+      days?: any[];
+    }>(aiRes.text);
 
-    const parsedData = JSON.parse(rawAi);
     if (!parsedData || !Array.isArray(parsedData.days) || parsedData.days.length === 0) {
       return null;
     }
 
-    const days: RoutineDayPlan[] = parsedData.days.map((d: any, dIdx: number) => {
-      const exercises: RoutineExercisePrescription[] = Array.isArray(d.exercises)
-        ? d.exercises.map((e: any) => {
-            const resolved = resolveExerciseIntelligently(e.name || 'Ejercicio');
-            return {
-              catalogId: resolved.canonicalCatalogId,
-              name: e.name || resolved.canonicalName,
-              mode: (e.mode as TrainingMode) || resolved.mode,
-              sets: typeof e.sets === 'number' && e.sets > 0 ? e.sets : 3,
-              repsNum: typeof e.repsNum === 'number' && e.repsNum > 0 ? e.repsNum : 10,
-              repRangeLabel: e.repRangeLabel || `${e.repsNum || 10} reps`,
-              rir: (['0', '1', '2', '3'].includes(e.rir) ? e.rir : '2') as any,
-              restSeconds:
-                typeof e.restSeconds === 'number' && e.restSeconds > 0
-                  ? e.restSeconds
-                  : resolved.defaultRestSeconds,
-              targetWeightKg:
-                typeof e.targetWeightKg === 'number' && e.targetWeightKg > 0
-                  ? e.targetWeightKg
-                  : undefined,
-              note: e.note || undefined,
-            };
-          })
-        : [];
+    const localFallback = parseRoutineFromExtractedText(rawText, fileName);
+
+    let days: RoutineDayPlan[] = parsedData.days.map((d: any, dIdx: number) => {
+      const rawExercises = Array.isArray(d.exercises) ? d.exercises : [];
+      const exercises: RoutineExercisePrescription[] = rawExercises.map((e: any) => {
+        const resolved = resolveExerciseIntelligently(e.name || 'Ejercicio');
+        return {
+          catalogId: resolved.canonicalCatalogId,
+          name: resolved.canonicalName || e.name || 'Ejercicio',
+          mode: (e.mode as TrainingMode) || resolved.mode,
+          sets: typeof e.sets === 'number' && e.sets > 0 ? e.sets : 3,
+          repsNum: typeof e.repsNum === 'number' && e.repsNum > 0 ? e.repsNum : 10,
+          repRangeLabel: e.repRangeLabel || `${e.repsNum || 10} reps`,
+          rir: (['0', '1', '2', '3'].includes(String(e.rir)) ? String(e.rir) : '2') as any,
+          restSeconds:
+            typeof e.restSeconds === 'number' && e.restSeconds > 0
+              ? e.restSeconds
+              : resolved.defaultRestSeconds,
+          targetWeightKg:
+            typeof e.targetWeightKg === 'number' && e.targetWeightKg > 0
+              ? e.targetWeightKg
+              : undefined,
+          note: e.note || undefined,
+        };
+      });
+
+      // Cross-verify: if Gemini left this non-rest day with 0 exercises, backfill from deterministic parser
+      const isRest = Boolean(d.isRestDay);
+      if (!isRest && exercises.length === 0 && localFallback.routine.days[dIdx]?.exercises?.length) {
+        exercises.push(...localFallback.routine.days[dIdx].exercises);
+      }
+
+      const labelStr = d.label || `Día ${dIdx + 1}`;
+      const focusStr = d.focusTitle || (isRest ? 'Descanso' : 'Entrenamiento');
+      const inferredWd =
+        inferWeekdayIndexFromText(labelStr) ?? inferWeekdayIndexFromText(focusStr);
 
       return {
         id: uid('rday'),
-        label: d.label || `Día ${dIdx + 1}`,
-        focusTitle: d.focusTitle || 'Entrenamiento',
-        isRestDay: Boolean(d.isRestDay),
+        label: labelStr,
+        weekdayIndex: inferredWd,
+        focusTitle: focusStr,
+        isRestDay: isRest && exercises.length === 0,
         primaryMode: (d.primaryMode as TrainingMode) || 'hypertrophy',
-        estimatedMinutes: Math.max(35, exercises.length * 10),
+        estimatedMinutes: isRest && exercises.length === 0 ? 0 : Math.max(35, exercises.length * 10),
         exercises,
       };
     });
 
-    const activeDaysCount = days.filter((d) => !d.isRestDay).length;
+    // Never keep broken non-rest days with 0 exercises if there are populated active days
+    const hasPopulatedDays = days.some((d) => d.exercises.length > 0);
+    if (hasPopulatedDays) {
+      days = days.filter((d) => d.exercises.length > 0 || d.isRestDay);
+      // Re-index cyclic day labels cleanly if cyclic
+      if (parsedData.scheduleType !== 'weekday') {
+        days = days.map((d, idx) => ({
+          ...d,
+          label: inferWeekdayIndexFromText(d.label) !== undefined ? d.label : `Día ${idx + 1}`,
+        }));
+      }
+    }
+
+    const weekdayCount = days.filter((d) => d.weekdayIndex !== undefined).length;
+    const resolvedScheduleType: RoutineScheduleType =
+      weekdayCount >= 2 ? 'weekday' : (parsedData.scheduleType as RoutineScheduleType) || 'cyclic';
+
+    const activeDaysCount = days.filter((d) => !d.isRestDay && d.exercises.length > 0).length;
     const totalExercisesCount = days.reduce((acc, d) => acc + d.exercises.length, 0);
+
+    // If local deterministic parser extracted significantly more exercises or active days, prefer local
+    if (
+      localFallback.totalExercisesCount > totalExercisesCount &&
+      localFallback.activeDaysCount >= activeDaysCount
+    ) {
+      return localFallback;
+    }
 
     return {
       routine: {
         id: uid('rtn'),
         name: parsedData.routineName || fileName || 'Rutina Personalizada',
-        scheduleType: (parsedData.scheduleType as RoutineScheduleType) || 'cyclic',
+        scheduleType: resolvedScheduleType,
         source: 'manual',
         createdAtIso: new Date().toISOString(),
         cycleAnchorDateKey: toLocalDateKey(),
@@ -149,7 +178,7 @@ async function extractStructuredRoutineWithGemini(
         adaptedOverride: null,
         days,
       },
-      detectedScheduleType: (parsedData.scheduleType as RoutineScheduleType) || 'cyclic',
+      detectedScheduleType: resolvedScheduleType,
       activeDaysCount,
       totalExercisesCount,
       warnings: [],
@@ -222,46 +251,25 @@ async function extractStructuredTextFromPdf(buffer: Buffer): Promise<string> {
  * or built-in neural Spanish+English OCR via tesseract.js (100% local, zero API key required).
  */
 async function extractTextFromImageBuffer(buffer: Buffer, mimeType: string): Promise<string> {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey) {
-    try {
-      const base64Data = buffer.toString('base64');
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: 'Extrae exactamente la rutina de entrenamiento de esta imagen en texto plano línea por línea, manteniendo los días (ej. Lunes, Día 1) y cada ejercicio con sus series y repeticiones (ej. Press Militar 4x8-10). No agregues comentarios extra.',
-                  },
-                  {
-                    inline_data: {
-                      mime_type: mimeType || 'image/png',
-                      data: base64Data,
-                    },
-                  },
-                ],
-              },
-            ],
-          }),
-        }
-      );
-      if (resp.ok) {
-        const json = (await resp.json()) as {
-          candidates?: { content?: { parts?: { text?: string }[] } }[];
-        };
-        const aiText = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (aiText && aiText.length >= 10) {
-          return aiText;
-        }
-      }
-    } catch {
-      // Fallback seamlessly to local Tesseract OCR
+  try {
+    const base64Data = buffer.toString('base64');
+    const aiRes = await generateWithGeminiCascade({
+      prompt:
+        'Extrae exactamente la rutina de entrenamiento de esta imagen en texto plano línea por línea, manteniendo todos los días (ej. Lunes, Día 1, Torso, Pierna) y cada ejercicio con sus series, repeticiones y kilos (ej. Press Militar 4x8-10 60kg). No agregues comentarios extra.',
+      tier: 'vision',
+      temperature: 0.1,
+      inlineImage: {
+        mimeType: mimeType || 'image/png',
+        base64Data,
+      },
+      cacheTtlMs: 30 * 60_000,
+    });
+
+    if (aiRes.ok && aiRes.text && aiRes.text.length >= 10) {
+      return aiRes.text;
     }
+  } catch {
+    // Fallback seamlessly to local Tesseract OCR
   }
 
   const isVercel = Boolean(process.env.VERCEL || process.env.NEXT_PUBLIC_VERCEL_ENV);

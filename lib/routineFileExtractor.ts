@@ -64,7 +64,7 @@ const CYCLIC_DAY_REGEX =
   /^(?:[•\-*▪◦]+\s*)?(?:d[ií]a|day|sesi[oó]n|entrenamiento|rutina|workout|bloque)\s*#?\s*(\d+|[a-f])\b(?:\s*[:\-–—|/()]\s*(.*))?$/i;
 
 const STANDALONE_SPLIT_REGEX =
-  /^(?:torso|pierna|piernas|empuje|tir[oó]n|jale|push|pull|legs|upper|lower|full\s*body|cuerpo\s*completo|pecho\s+y\s+\w+|espalda\s+y\s+\w+|hombro[s]?\s+y\s+\w+|gl[uú]teo[s]?\s+e?\s*\w+)(?:\s+[1-3a-c])?$/i;
+  /^(?:[\d#•\-*▪◦]+\s*[.):\-]?\s*)?(?:d[ií]a\s+de\s+)?(torso|pierna|piernas|empuje|tir[oó]n|jale|push|pull|legs|upper|lower|full\s*body|cuerpo\s*completo|pecho(?:\s+y\s+\w+)?|espalda(?:\s+y\s+\w+)?|hombro[s]?(?:\s+y\s+\w+)?|brazo[s]?(?:\s+y\s+\w+)?|gl[uú]teo[s]?(?:\s+[ey]\s+\w+)?|cu[aá]driceps(?:\s+[ey]\s+\w+)?|isquios?(?:\s+[ey]\s+\w+)?|descanso|rest\s*day)(?:\s+[1-3a-c])?$/i;
 
 const NOISE_LINE_REGEX =
   /^(?:ejercicio[s]?|series|repeticiones|reps|descanso|pausa|notas?|observaciones|objetivo|semana\s+\d+|mesociclo|microciclo|entrenador|coach|alumno|atleta|nombre|fecha|p[aá]gina\s+\d+|calentamiento\s+general|movilidad\s+articular|estiramiento[s]?|hidrataci[oó]n|www\.|https?:\/\/|@[\w.]+)$/i;
@@ -286,13 +286,17 @@ export function parseRoutineFromExtractedText(
       continue;
     }
 
-    // 3. Check Standalone Split Section Title (e.g. "TORSO A", "PIERNA B", "PECHO Y TRÍCEPS")
+    // 3. Check Standalone Split Section Title (e.g. "TORSO A", "2. PIERNA", "PECHO Y TRÍCEPS")
     if (!/\d\s*[x×X]\s*\d/.test(line) && STANDALONE_SPLIT_REGEX.test(line)) {
+      const cleanedSplitTitle = capitalizeClean(
+        line.replace(/^(?:[\d#•\-*▪◦]+\s*[.):\-]?\s*)/, '').toLowerCase()
+      );
+      const isRest = /\b(?:descanso|rest|libre|off)\b/i.test(cleanedSplitTitle);
       currentBucket = {
         type: 'cyclic',
         label: `Día ${buckets.length + 1}`,
-        explicitFocusTitle: capitalizeClean(line.toLowerCase()),
-        isRestDay: false,
+        explicitFocusTitle: isRest ? 'Descanso' : cleanedSplitTitle,
+        isRestDay: isRest,
         exercises: [],
       };
       buckets.push(currentBucket);

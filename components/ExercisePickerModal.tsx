@@ -5,6 +5,7 @@ import {
   CalisthenicsSubType,
   CardioDiscipline,
   ExerciseCatalogItem,
+  OutOfContextWordAnalysis,
   TrainingMode,
 } from '@/types/kairos';
 import { useKairos } from '@/lib/kairosContext';
@@ -14,8 +15,16 @@ import {
   smartSearchExercises,
 } from '@/lib/exerciseDatabase';
 import { MODE_META } from '@/lib/formatters';
-import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
-import { Plus, Search, Sparkles, X } from 'lucide-react';
+import {
+  detectOutOfContextExerciseWords,
+  resolveExerciseIntelligently,
+  synthesizeExerciseDeepProfile,
+} from '@/lib/exerciseClassifierEngine';
+import {
+  ExerciseDeepProfileModal,
+  ExerciseOutOfContextPromptModal,
+} from '@/components/ExerciseIntelligenceModal';
+import { AlertTriangle, Brain, Plus, Search, Sparkles, X } from 'lucide-react';
 
 interface ExercisePickerModalProps {
   isOpen: boolean;
@@ -47,6 +56,15 @@ export function ExercisePickerModal({
   );
   const [customCalisthenicsType, setCustomCalisthenicsType] =
     useState<CalisthenicsSubType>('dynamic');
+  const [pendingOutOfContext, setPendingOutOfContext] = useState<{
+    analysis: OutOfContextWordAnalysis;
+    muscleGroup?: string;
+  } | null>(null);
+  const [inspectedExercise, setInspectedExercise] = useState<{
+    name: string;
+    mode: TrainingMode;
+    catalogId?: string;
+  } | null>(null);
 
   const matches = useMemo(
     () =>
@@ -59,17 +77,17 @@ export function ExercisePickerModal({
     [catalog, mode, query, selectedDiscipline]
   );
 
-  if (!isOpen) return null;
-
-  const meta = MODE_META[mode];
   const trimmedQuery = query.trim();
-  const qNorm = normalizeSearchText(trimmedQuery);
-  const exactExists = matches.some((m) => normalizeSearchText(m.item.name) === qNorm);
-
   const aiResolved = useMemo(
     () => (trimmedQuery.length >= 2 ? resolveExerciseIntelligently(trimmedQuery, mode, catalog) : null),
     [trimmedQuery, mode, catalog]
   );
+
+  if (!isOpen) return null;
+
+  const meta = MODE_META[mode];
+  const qNorm = normalizeSearchText(trimmedQuery);
+  const exactExists = matches.some((m) => normalizeSearchText(m.item.name) === qNorm);
 
   const handleSelect = (item: ExerciseCatalogItem) => {
     addExerciseToBlock(blockId, item);
@@ -77,16 +95,31 @@ export function ExercisePickerModal({
     onClose();
   };
 
-  const handleCreateCustom = (customName?: string, customMuscle?: string) => {
-    const finalName = customName || trimmedQuery;
+  const executeCreateCustom = (finalName: string, customMuscle?: string) => {
     if (!finalName) return;
+    const resolved = resolveExerciseIntelligently(finalName, mode, catalog);
     createAndAddCustomExercise(blockId, finalName, mode, {
-      muscleGroup: customMuscle || aiResolved?.muscleGroup,
+      muscleGroup: customMuscle || resolved.muscleGroup,
       calisthenicsSubType: customCalisthenicsType,
       cardioDiscipline: selectedDiscipline ?? defaultCardioDiscipline ?? 'jumprope',
     });
+    setPendingOutOfContext(null);
     setQuery('');
     onClose();
+  };
+
+  const handleCreateCustom = (customName?: string, customMuscle?: string) => {
+    const finalName = (customName || trimmedQuery).trim();
+    if (!finalName) return;
+    const ooc = detectOutOfContextExerciseWords(finalName);
+    if (ooc.hasSuspiciousWords) {
+      setPendingOutOfContext({
+        analysis: ooc,
+        muscleGroup: customMuscle || aiResolved?.muscleGroup,
+      });
+      return;
+    }
+    executeCreateCustom(finalName, customMuscle);
   };
 
   return (
@@ -190,6 +223,16 @@ export function ExercisePickerModal({
                 </div>
               )}
 
+              {aiResolved.outOfContextAnalysis.hasSuspiciousWords && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-200">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Palabras extra detectadas: </span>
+                    {aiResolved.outOfContextAnalysis.suspiciousWords.map((w) => `«${w}»`).join(', ')}. Al añadirlo te consultaremos si fue con querer o un error.
+                  </div>
+                </div>
+              )}
+
               {aiResolved.isCanonicalMatch ? (
                 <div className="rounded-xl border border-gothic/40 bg-gothic/10 p-2 space-y-2">
                   <div className="flex items-center justify-between text-[11px]">
@@ -199,9 +242,14 @@ export function ExercisePickerModal({
                     </span>
                     <span className="text-[10px] text-brand-muted">{aiResolved.confidence}% certeza</span>
                   </div>
-                  <p className="text-[10px] text-brand-muted">
-                    Grupo: <strong>{aiResolved.muscleGroup}</strong>
-                  </p>
+                  <div className="space-y-1 text-[10px] text-brand-muted">
+                    <p>
+                      Principal: <strong className="text-brand">{aiResolved.deepProfile.primaryMuscles.join(', ')}</strong>
+                    </p>
+                    <p>
+                      Sinergistas necesarios: <span className="text-brand/80">{aiResolved.deepProfile.secondaryMuscles.slice(0, 2).join(', ')}</span> · Fatiga SNC: <strong className="text-brand">{aiResolved.deepProfile.cnsFatigueIndex}/10</strong> · SFR: <strong className="text-emerald-300">{aiResolved.deepProfile.sfrScore}/10</strong>
+                    </p>
+                  </div>
                   <div className="flex gap-2 pt-0.5">
                     <button
                       type="button"
@@ -222,17 +270,22 @@ export function ExercisePickerModal({
                       onClick={() => handleCreateCustom(trimmedQuery, aiResolved.muscleGroup)}
                       className="flex-1 rounded-lg border border-stoneborder bg-background py-1.5 px-2 text-[11px] font-medium text-brand-muted hover:text-brand active:scale-95"
                     >
-                      Crear "{trimmedQuery}"
+                      Crear &quot;{trimmedQuery}&quot;
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] text-brand-muted">
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-gothic" />
-                      Grupo muscular sugerido: <strong className="text-brand">{aiResolved.muscleGroup}</strong>
-                    </span>
+                  <div className="space-y-0.5 text-[10px] text-brand-muted">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="h-3 w-3 text-gothic" />
+                        Músculo principal: <strong className="text-brand">{aiResolved.deepProfile.primaryMuscles[0] || aiResolved.muscleGroup}</strong>
+                      </span>
+                    </div>
+                    <p>
+                      Sinergistas: <span className="text-brand/80">{aiResolved.deepProfile.secondaryMuscles.slice(0, 2).join(', ')}</span> · Fatiga SNC: <strong className="text-brand">{aiResolved.deepProfile.cnsFatigueIndex}/10</strong>
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -240,7 +293,7 @@ export function ExercisePickerModal({
                     className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-gothic/40 bg-gothic/10 py-2 px-3 text-xs font-semibold text-brand active:scale-95"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    {`Crear "${trimmedQuery}"`}
+                    {`Añadir e Investigar "${trimmedQuery}" con IA`}
                   </button>
                 </div>
               )}
@@ -252,14 +305,17 @@ export function ExercisePickerModal({
         <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y divide-y divide-stoneborder/60 px-4 py-1">
           {matches.map(({ item, matchedAlias }) => {
             const ghost = getLastExerciseGhost(sessions, item.id, item.name);
+            const prof = item.deepProfile || synthesizeExerciseDeepProfile(item.name, item.mode, item.id);
             return (
-              <button
+              <div
                 key={item.id}
-                type="button"
-                onClick={() => handleSelect(item)}
-                className="w-full py-3 text-left flex items-center justify-between gap-3 hover:opacity-90"
+                className="w-full py-2.5 flex items-center justify-between gap-2"
               >
-                <div className="min-w-0 flex-1 space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleSelect(item)}
+                  className="min-w-0 flex-1 text-left space-y-0.5 hover:opacity-90"
+                >
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-brand">{item.name}</span>
                     {matchedAlias && (
@@ -268,18 +324,63 @@ export function ExercisePickerModal({
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-brand-muted">
-                    {item.muscleGroup}
+                  <p className="text-[11px] text-brand-muted">
+                    {item.muscleGroup} · <span className="text-brand/75">{prof.mechanicType}</span> · SNC {prof.cnsFatigueIndex}/10 · SFR {prof.sfrScore}/10
                     {ghost ? ` · Última: ${ghost.summaryLine}` : ''}
                   </p>
-                </div>
+                </button>
 
-                <Plus className="h-4 w-4 shrink-0 text-gothic" />
-              </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setInspectedExercise({
+                        name: item.name,
+                        mode: item.mode,
+                        catalogId: item.id,
+                      })
+                    }
+                    title="Ver ficha biomecánica profunda"
+                    className="rounded-lg border border-stoneborder bg-background p-1.5 text-brand-muted hover:border-gothic/50 hover:text-brand"
+                  >
+                    <Brain className="h-3.5 w-3.5 text-gothic" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(item)}
+                    aria-label={`Añadir ${item.name}`}
+                    className="rounded-lg border border-gothic/30 bg-gothic/10 p-1.5 text-gothic hover:bg-gothic/20"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
             );
           })}
         </div>
       </div>
+
+      {/* Out-of-Context Verification Prompt Modal */}
+      <ExerciseOutOfContextPromptModal
+        isOpen={Boolean(pendingOutOfContext)}
+        analysis={pendingOutOfContext?.analysis ?? null}
+        onConfirmClean={(cleanedName) =>
+          executeCreateCustom(cleanedName, pendingOutOfContext?.muscleGroup)
+        }
+        onConfirmIntentional={(originalName) =>
+          executeCreateCustom(originalName, pendingOutOfContext?.muscleGroup)
+        }
+        onCancel={() => setPendingOutOfContext(null)}
+      />
+
+      {/* Deep Biomechanical Profile Inspection Modal */}
+      <ExerciseDeepProfileModal
+        isOpen={Boolean(inspectedExercise)}
+        onClose={() => setInspectedExercise(null)}
+        exerciseName={inspectedExercise?.name || ''}
+        mode={inspectedExercise?.mode}
+        catalogId={inspectedExercise?.catalogId}
+      />
     </div>
   );
 }

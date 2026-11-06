@@ -1,13 +1,16 @@
 import {
+  ExerciseDeepProfile,
   ExerciseEvaluation,
   ExerciseHistoryPoint,
   HyroxStationName,
+  MuscleFatigueReport,
   ProgressStatus,
   SessionImpactReport,
   WorkoutBlock,
   WorkoutExercise,
   WorkoutSession,
 } from '@/types/kairos';
+import { synthesizeExerciseDeepProfile } from '@/lib/exerciseClassifierEngine';
 import {
   calculateE1RM,
   calculateIsometricScore,
@@ -308,32 +311,37 @@ function formatMetricDisplay(point: ExerciseHistoryPoint): string {
 
 function buildRegressionDiagnosis(
   ex: WorkoutExercise,
-  deltaPercent: number
+  deltaPercent: number,
+  deepProfile: ExerciseDeepProfile
 ): { title: string; body: string; recommendation: string } {
   const absDrop = Math.abs(deltaPercent).toFixed(1);
+  const prim = deepProfile.primaryMuscles.join(', ');
+  const syn = deepProfile.secondaryMuscles.slice(0, 2).join(', ');
 
   if (ex.mode === 'strength' || ex.mode === 'hypertrophy') {
     return {
-      title: `Caída aguda de rendimiento (-${absDrop}%) a alto esfuerzo percibido`,
-      body: 'Caída de fuerza detectada a alto esfuerzo percibido (RPE ≥ 9 / RIR 0). Posible fatiga acumulada del Sistema Nervioso Central (SNC), descanso insuficiente entre series (<120s) o déficit de glucógeno intramuscular e hidratación.',
+      title: `Caída aguda de rendimiento (-${absDrop}%) en ${prim}`,
+      body: `Descenso de fuerza a alto esfuerzo percibido (Fatiga SNC: ${deepProfile.cnsFatigueIndex}/10 · Fatiga Local: ${deepProfile.localFatigueIndex}/10). Posible fatiga residual en agonistas (${prim}) o sinergistas necesarios (${syn}), con ventana fisiológica de recuperación de ~${deepProfile.recoveryHours}h.`,
       recommendation:
-        'Añade +60s a tu timer de descanso para completar la resíntesis de ATP-PCr o aplica una serie de descarga (Back-off set al -15% de carga manteniendo RIR 2).',
+        deepProfile.cnsFatigueIndex >= 7
+          ? `Extiende el descanso a 150–180s para disipar fatiga del SNC (${deepProfile.cnsFatigueIndex}/10) o aplica un Back-off set al -12% manteniendo RIR 2 dentro del rango óptimo (${deepProfile.optimalRepRange}).`
+          : `Añade +45–60s al descanso entre series o reduce 1 serie efectiva hoy para permitir supercompensación de ${prim}.`,
     };
   }
 
   if (ex.mode === 'calisthenics') {
     return {
       title: `Pérdida de tiempo bajo tensión / palanca (-${absDrop}%)`,
-      body: 'Fatiga neuromuscular en estabilizadores escapulares (serrato/trapecio inferior) o saturación de tejidos conectivos en codo y flexores de muñeca.',
+      body: `Fatiga neuromuscular acumulada en ${prim} y sinergistas (${syn}), o estrés articular (${deepProfile.jointStress.level}) en ${deepProfile.jointStress.joints.join(', ')}.`,
       recommendation:
-        'Regresa un escalón en la progresión (ej. Straddle -> Adv. Tuck) buscando bloqueo articular limpio con descansos de 180s.',
+        'Regresa un escalón en la progresión buscando bloqueo articular limpio con descansos de 180s.',
     };
   }
 
   if (ex.mode === 'hyrox') {
     return {
       title: `Degradación de Split Híbrido (-${absDrop}%)`,
-      body: 'Acumulación prematura de lactato sobre el umbral LT2 o pérdida de economía mecánica en transición Roxzone.',
+      body: `Acumulación prematura de lactato en ${prim} o pérdida de economía mecánica en transición Roxzone.`,
       recommendation:
         'Regula el primer tercio de la estación al 88% de esfuerzo y estandariza respiraciones rítmicas antes de retomar la carrera.',
     };
@@ -341,9 +349,9 @@ function buildRegressionDiagnosis(
 
   return {
     title: `Descenso de eficiencia cardiovascular / cadencia (-${absDrop}%)`,
-    body: 'Pérdida de reactividad elástica en el complejo aquileo-plantar o deriva cardiovascular por deshidratación/fatiga residual de tren inferior.',
+    body: 'Pérdida de reactividad elástica en el complejo aquileo-plantar o deriva cardiovascular por fatiga residual de tren inferior.',
     recommendation:
-      'Prioriza técnica de muñeca/cadencia limpia reduciendo la duración del intervalo un 20% o programa una sesión regenerativa en Zona 2.',
+      'Prioriza técnica limpia reduciendo la duración del intervalo un 20% o programa una sesión regenerativa en Zona 2.',
   };
 }
 
@@ -398,6 +406,14 @@ export function evaluateAllExercises(sessions: WorkoutSession[]): ExerciseEvalua
     const latest = points[points.length - 1];
     if (!latest) return;
 
+    const deepProfile =
+      sampleExercise.deepProfile ??
+      synthesizeExerciseDeepProfile(
+        sampleExercise.name,
+        sampleExercise.mode,
+        sampleExercise.catalogId
+      );
+
     if (points.length === 1) {
       evaluations.push({
         catalogId: key,
@@ -405,6 +421,7 @@ export function evaluateAllExercises(sessions: WorkoutSession[]): ExerciseEvalua
         mode: sampleExercise.mode,
         cardioDiscipline: sampleExercise.cardioDiscipline,
         calisthenicsSubType: sampleExercise.calisthenicsSubType,
+        deepProfile,
         status: 'baseline',
         deltaPercent: 0,
         isNewPr: true,
@@ -489,7 +506,7 @@ export function evaluateAllExercises(sessions: WorkoutSession[]): ExerciseEvalua
     } else if (status === 'regress') {
       const shownDrop = deltaPercent < -0.5 ? deltaPercent : Math.round(secondaryVolumeGain * 10) / 10;
       badgeText = `▼ ${shownDrop}% Rendimiento`;
-      const diag = buildRegressionDiagnosis(sampleExercise, shownDrop);
+      const diag = buildRegressionDiagnosis(sampleExercise, shownDrop, deepProfile);
       diagnosisTitle = diag.title;
       diagnosisBody = diag.body;
       recommendation = diag.recommendation;
@@ -501,6 +518,7 @@ export function evaluateAllExercises(sessions: WorkoutSession[]): ExerciseEvalua
       mode: sampleExercise.mode,
       cardioDiscipline: sampleExercise.cardioDiscipline,
       calisthenicsSubType: sampleExercise.calisthenicsSubType,
+      deepProfile,
       status,
       deltaPercent,
       isNewPr,
@@ -752,4 +770,208 @@ export function computeExecutiveStats(sessions: WorkoutSession[], evaluations: E
     maintainPct,
     totalPrs,
   };
+}
+
+function normalizeCanonicalMuscleGroup(rawLabel: string): string {
+  const lower = rawLabel.toLowerCase();
+  if (/pectoral|pecho/.test(lower)) return 'Pectoral';
+  if (/dorsal|redondo\s*mayor|espalda/.test(lower)) return 'Dorsal / Espalda';
+  if (/trapecio|romboides|elevador/.test(lower)) return 'Trapecio / Romboides';
+  if (/deltoides\s*posterior|infraespinoso/.test(lower)) return 'Deltoides Posterior';
+  if (/deltoides|hombro|supraespinoso/.test(lower)) return 'Deltoides (Anterior / Lateral)';
+  if (/tr[ií]ceps|anc[oó]neo/.test(lower)) return 'Tríceps Braquial';
+  if (/b[ií]ceps|braquial|braquiorradial|antebrazo|flexores|extensores/.test(lower))
+    return 'Bíceps y Antebrazo';
+  if (/cu[aá]driceps|recto\s*femoral|vasto/.test(lower)) return 'Cuádriceps';
+  if (/isquio|femoral|semitendinoso|semimembranoso/.test(lower)) return 'Isquiosurales';
+  if (/gl[uú]teo|tensor|aductor/.test(lower)) return 'Glúteos y Cadera';
+  if (/gastrocnemio|s[oó]leo|gemelo|pantorrilla|tibial|peroneo/.test(lower))
+    return 'Pantorrillas (Gemelos / Sóleo)';
+  if (/abdominal|oblicuo|transverso|core|serrato|erectores|mult[ií]fidos|psoas/.test(lower))
+    return 'Core y Erectores Espinales';
+  if (/cardio|oxidativo/.test(lower)) return 'Sistema Cardiorrespiratorio';
+  return rawLabel.split('(')[0].trim() || 'Grupo Muscular';
+}
+
+/**
+ * Computes a 7-day physiological muscle volume and accumulated fatigue report
+ * accounting for Direct Agonist Sets (1.0x), Necessary Synergist Sets (0.5x),
+ * RIR/RPE intensity, exercise fatigueCoefficient, and time decay over recoveryHours.
+ */
+export function computeMuscleFatigueReports(sessions: WorkoutSession[]): MuscleFatigueReport[] {
+  const nowMs = Date.now();
+  const sevenDaysMs = 7 * 24 * 3600 * 1000;
+
+  const recentSessions = sessions.filter((s) => {
+    const t = new Date(s.dateIso).getTime();
+    return !isNaN(t) && nowMs - t <= sevenDaysMs;
+  });
+
+  const bucketMap = new Map<
+    string,
+    {
+      directSets7d: number;
+      synergistSets7d: number;
+      rawFatigueUnits: number;
+      cnsUnits: number;
+      maxRemainingRecoveryHours: number;
+      exercises: Set<string>;
+    }
+  >();
+
+  const ensureBucket = (group: string) => {
+    let b = bucketMap.get(group);
+    if (!b) {
+      b = {
+        directSets7d: 0,
+        synergistSets7d: 0,
+        rawFatigueUnits: 0,
+        cnsUnits: 0,
+        maxRemainingRecoveryHours: 0,
+        exercises: new Set<string>(),
+      };
+      bucketMap.set(group, b);
+    }
+    return b;
+  };
+
+  recentSessions.forEach((session) => {
+    const sessionMs = new Date(session.dateIso).getTime();
+    const hoursElapsed = Math.max(0, (nowMs - sessionMs) / 3600000);
+
+    session.blocks.forEach((block) => {
+      block.exercises.forEach((ex) => {
+        const prof =
+          ex.deepProfile ??
+          synthesizeExerciseDeepProfile(ex.name, ex.mode, ex.catalogId);
+
+        let workingSets = 0;
+        let intensityMultiplier = 1.0;
+
+        if (ex.mode === 'hypertrophy' && ex.hypertrophySets?.length) {
+          const eff = ex.hypertrophySets.filter(
+            (s) => s.setType !== 'Calentamiento' && s.reps > 0
+          );
+          workingSets = eff.length;
+          if (eff.length > 0) {
+            const avgRir =
+              eff.reduce((acc, s) => acc + (s.rir === '4+' ? 4 : parseInt(s.rir, 10)), 0) /
+              eff.length;
+            intensityMultiplier = avgRir <= 0.5 ? 1.25 : avgRir <= 1.5 ? 1.1 : avgRir <= 2.5 ? 1.0 : 0.85;
+          }
+        } else if (ex.mode === 'strength' && ex.strengthSets?.length) {
+          const eff = ex.strengthSets.filter((s) => s.reps > 0 && s.weightKg > 0);
+          workingSets = eff.length;
+          if (eff.length > 0) {
+            const avgRpe = eff.reduce((acc, s) => acc + s.rpe, 0) / eff.length;
+            intensityMultiplier = avgRpe >= 9.2 ? 1.3 : avgRpe >= 8.2 ? 1.15 : 1.0;
+          }
+        } else if (ex.mode === 'calisthenics') {
+          workingSets =
+            (ex.calisthenicsDynamicSets?.filter((s) => s.reps > 0).length || 0) +
+            (ex.calisthenicsIsometricSets?.filter((s) => s.actualSeconds > 0).length || 0);
+          intensityMultiplier = 1.1;
+        } else if (ex.mode === 'hyrox') {
+          workingSets = ex.hyroxSets?.filter((s) => s.splitSeconds > 0).length || 0;
+          intensityMultiplier = 1.15;
+        } else if (ex.mode === 'cardio') {
+          workingSets =
+            (ex.jumpRopeSets?.filter((s) => s.durationSeconds > 0).length || 0) +
+            (ex.runningSets?.filter((s) => s.durationSeconds > 0).length || 0) +
+            (ex.swimmingSets?.filter((s) => s.durationSeconds > 0).length || 0) +
+            (ex.cyclingSets?.filter((s) => s.durationSeconds > 0).length || 0);
+          intensityMultiplier = 0.9;
+        }
+
+        if (workingSets <= 0) return;
+
+        // Time decay factor over recovery window
+        const recoveryWindow = prof.recoveryHours * 1.25;
+        const decayFactor = Math.max(0.08, 1 - hoursElapsed / recoveryWindow);
+        const remainingHours = Math.max(0, Math.round(prof.recoveryHours - hoursElapsed));
+
+        const primaryGroups = Array.from(
+          new Set(prof.primaryMuscles.map(normalizeCanonicalMuscleGroup))
+        );
+        const secondaryGroups = Array.from(
+          new Set(
+            prof.secondaryMuscles
+              .map(normalizeCanonicalMuscleGroup)
+              .filter((g) => !primaryGroups.includes(g))
+          )
+        );
+
+        // Credit Primary Muscles (1.0x Direct Sets)
+        primaryGroups.forEach((g) => {
+          const b = ensureBucket(g);
+          b.directSets7d += workingSets;
+          b.rawFatigueUnits +=
+            workingSets *
+            prof.fatigueCoefficient *
+            intensityMultiplier *
+            (prof.localFatigueIndex / 7.5) *
+            decayFactor *
+            8.5;
+          b.cnsUnits += workingSets * (prof.cnsFatigueIndex / 10) * decayFactor;
+          b.maxRemainingRecoveryHours = Math.max(b.maxRemainingRecoveryHours, remainingHours);
+          b.exercises.add(ex.name);
+        });
+
+        // Credit Necessary Secondary / Synergist Muscles (0.5x Synergist Sets)
+        secondaryGroups.forEach((g) => {
+          const b = ensureBucket(g);
+          b.synergistSets7d += workingSets;
+          b.rawFatigueUnits +=
+            workingSets *
+            0.45 *
+            prof.fatigueCoefficient *
+            intensityMultiplier *
+            (prof.localFatigueIndex / 8) *
+            decayFactor *
+            7.5;
+          b.cnsUnits += workingSets * 0.35 * (prof.cnsFatigueIndex / 10) * decayFactor;
+          b.maxRemainingRecoveryHours = Math.max(
+            b.maxRemainingRecoveryHours,
+            Math.round(remainingHours * 0.65)
+          );
+          b.exercises.add(`${ex.name} (Sinergista)`);
+        });
+      });
+    });
+  });
+
+  const reports: MuscleFatigueReport[] = [];
+
+  bucketMap.forEach((b, muscleGroup) => {
+    const effectiveSets7d = Math.round((b.directSets7d + b.synergistSets7d * 0.5) * 10) / 10;
+    const accumulatedFatiguePct = Math.min(100, Math.max(5, Math.round(b.rawFatigueUnits)));
+    const cnsLoadContribution = Math.round(b.cnsUnits * 10) / 10;
+
+    let status: MuscleFatigueReport['status'] = 'Recuperado / Óptimo';
+    if (accumulatedFatiguePct >= 85) {
+      status = 'Sobrecarga Crítica';
+    } else if (accumulatedFatiguePct >= 62) {
+      status = 'Fatiga Alta';
+    } else if (accumulatedFatiguePct >= 32) {
+      status = 'Carga Productiva';
+    }
+
+    reports.push({
+      muscleGroup,
+      directSets7d: b.directSets7d,
+      synergistSets7d: b.synergistSets7d,
+      effectiveSets7d,
+      accumulatedFatiguePct,
+      cnsLoadContribution,
+      status,
+      estimatedRecoveryHoursRemaining: b.maxRemainingRecoveryHours,
+      contributingExercises: Array.from(b.exercises).slice(0, 5),
+    });
+  });
+
+  return reports.sort(
+    (a, b) =>
+      b.accumulatedFatiguePct - a.accumulatedFatiguePct ||
+      b.effectiveSets7d - a.effectiveSets7d
+  );
 }

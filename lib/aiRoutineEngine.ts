@@ -13,6 +13,7 @@ import {
   WorkoutSession,
 } from '@/types/kairos';
 import { BUILTIN_EXERCISES, cloneSetsFromGhost, getLastExerciseGhost, normalizeSearchText } from '@/lib/exerciseDatabase';
+import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
 import { getResolvedWorkoutDefaults, MODE_META, toLocalDateKey, uid } from '@/lib/formatters';
 
 export const WEEKDAY_NAMES_ES = [
@@ -557,6 +558,45 @@ export interface TodayRoutineResolution {
   adaptationMessage?: string;
   completedToday: boolean;
   missedPreviousDayPlan: RoutineDayPlan | null;
+  currentWeekdayIndex: number;
+  currentWeekdayNameEs: string;
+  todayDateLabelEs: string;
+  scheduleModeLabelEs: string;
+}
+
+const SHORT_MONTHS_ES = [
+  'Ene',
+  'Feb',
+  'Mar',
+  'Abr',
+  'May',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dic',
+] as const;
+
+/**
+ * Infers a JS weekday index (0 = Domingo ... 6 = Sábado) from any label or title text.
+ */
+export function inferWeekdayIndexFromText(text?: string): number | undefined {
+  if (!text) return undefined;
+  const norm = text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+  if (/\b(?:lunes|monday)\b/.test(norm)) return 1;
+  if (/\b(?:martes|tuesday)\b/.test(norm)) return 2;
+  if (/\b(?:miercoles|wednesday)\b/.test(norm)) return 3;
+  if (/\b(?:jueves|thursday)\b/.test(norm)) return 4;
+  if (/\b(?:viernes|friday)\b/.test(norm)) return 5;
+  if (/\b(?:sabado|saturday)\b/.test(norm)) return 6;
+  if (/\b(?:domingo|sunday)\b/.test(norm)) return 0;
+  return undefined;
 }
 
 function diffCalendarDays(anchorKey: string, targetKey: string): number {
@@ -567,27 +607,95 @@ function diffCalendarDays(anchorKey: string, targetKey: string): number {
   return Math.round((utcT - utcA) / (1000 * 60 * 60 * 24));
 }
 
+/**
+ * Matches a completed WorkoutSession to the most likely RoutineDayPlan in a routine.
+ */
+function findMatchingRoutineDayForSession(
+  routine: UserRoutine,
+  session: WorkoutSession
+): number {
+  const sessionTitleNorm = normalizeSearchText(session.title || '');
+  const sessionCatalogIds = new Set(
+    session.blocks.flatMap((b) => b.exercises.map((e) => e.catalogId))
+  );
+
+  // 1. Direct focusTitle match
+  for (let i = 0; i < routine.days.length; i++) {
+    const d = routine.days[i];
+    if (d.isRestDay) continue;
+    const focusNorm = normalizeSearchText(d.focusTitle || '');
+    const labelNorm = normalizeSearchText(d.label || '');
+    if (
+      (focusNorm.length >= 3 && sessionTitleNorm.includes(focusNorm)) ||
+      (labelNorm.length >= 4 && sessionTitleNorm.includes(labelNorm))
+    ) {
+      return i;
+    }
+  }
+
+  // 2. Highest exercise overlap match
+  let bestIdx = -1;
+  let bestScore = 0;
+  for (let i = 0; i < routine.days.length; i++) {
+    const d = routine.days[i];
+    if (d.isRestDay || d.exercises.length === 0) continue;
+    let overlap = 0;
+    for (const ex of d.exercises) {
+      if (sessionCatalogIds.has(ex.catalogId)) overlap++;
+    }
+    if (overlap > bestScore) {
+      bestScore = overlap;
+      bestIdx = i;
+    }
+  }
+
+  return bestIdx;
+}
+
 export function resolveTodayRoutineStatus(
   routine: UserRoutine | null,
   sessions: WorkoutSession[],
   now = new Date()
 ): TodayRoutineResolution {
+  const todayWd = now.getDay();
+  const currentWeekdayNameEs = WEEKDAY_NAMES_ES[todayWd];
+  const todayDateLabelEs = `${currentWeekdayNameEs} ${now.getDate()} ${SHORT_MONTHS_ES[now.getMonth()]}`;
+
   if (!routine || !routine.days.length) {
     return {
       todayPlan: null,
       isAdaptedToday: false,
       completedToday: false,
       missedPreviousDayPlan: null,
+      currentWeekdayIndex: todayWd,
+      currentWeekdayNameEs,
+      todayDateLabelEs,
+      scheduleModeLabelEs: 'Sin Rutina',
     };
   }
 
   const todayKey = toLocalDateKey(now);
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   const yesterdayKey = toLocalDateKey(yesterday);
+  const yestWd = yesterday.getDay();
 
-  const completedToday = sessions.some(
+  // Detect if routine days carry explicit weekday names even if scheduleType was saved as cyclic
+  const explicitWeekdayDaysCount = routine.days.filter(
+    (d) =>
+      d.weekdayIndex !== undefined ||
+      inferWeekdayIndexFromText(d.label) !== undefined ||
+      inferWeekdayIndexFromText(d.focusTitle) !== undefined
+  ).length;
+  const isEffectiveWeekdaySchedule =
+    routine.scheduleType === 'weekday' || explicitWeekdayDaysCount >= 2;
+  const scheduleModeLabelEs = isEffectiveWeekdaySchedule
+    ? 'Calendario Semanal'
+    : 'Ciclo Dinámico';
+
+  const todayCompletedSession = sessions.find(
     (s) => toLocalDateKey(new Date(s.dateIso)) === todayKey
   );
+  const completedToday = Boolean(todayCompletedSession);
   const trainedYesterday = sessions.some(
     (s) => toLocalDateKey(new Date(s.dateIso)) === yesterdayKey
   );
@@ -610,10 +718,14 @@ export function resolveTodayRoutineStatus(
         'Tu rutina fue adaptada para que retomes en tu próxima sesión sin perder el orden.',
       completedToday,
       missedPreviousDayPlan: null,
+      currentWeekdayIndex: todayWd,
+      currentWeekdayNameEs,
+      todayDateLabelEs,
+      scheduleModeLabelEs,
     };
   }
 
-  // Check if an adapted override is scheduled specifically for today
+  // Check if an adapted override or manual day selection is scheduled specifically for today
   if (routine.adaptedOverride && routine.adaptedOverride.forDateKey === todayKey) {
     const overridePlan = routine.days.find((d) => d.id === routine.adaptedOverride?.dayPlanId);
     if (overridePlan) {
@@ -623,6 +735,10 @@ export function resolveTodayRoutineStatus(
         adaptationMessage: routine.adaptedOverride.explanation,
         completedToday,
         missedPreviousDayPlan: null,
+        currentWeekdayIndex: todayWd,
+        currentWeekdayNameEs,
+        todayDateLabelEs,
+        scheduleModeLabelEs,
       };
     }
   }
@@ -630,21 +746,86 @@ export function resolveTodayRoutineStatus(
   let todayPlan: RoutineDayPlan | null = null;
   let yesterdayScheduledPlan: RoutineDayPlan | null = null;
 
-  if (routine.scheduleType === 'weekday') {
-    const todayWd = now.getDay();
-    const yestWd = yesterday.getDay();
-    todayPlan = routine.days.find((d) => d.weekdayIndex === todayWd) ?? routine.days[0];
-    yesterdayScheduledPlan = routine.days.find((d) => d.weekdayIndex === yestWd) ?? null;
+  const findDayByWeekday = (wd: number): RoutineDayPlan | undefined =>
+    routine.days.find(
+      (d) =>
+        d.weekdayIndex === wd ||
+        inferWeekdayIndexFromText(d.label) === wd ||
+        inferWeekdayIndexFromText(d.focusTitle) === wd
+    );
+
+  if (isEffectiveWeekdaySchedule) {
+    todayPlan = findDayByWeekday(todayWd) ?? routine.days[0];
+    yesterdayScheduledPlan = findDayByWeekday(yestWd) ?? null;
   } else {
     const len = routine.days.length;
-    const elapsed = diffCalendarDays(routine.cycleAnchorDateKey, todayKey);
-    const idx = (((elapsed - routine.cycleOffsetDays) % len) + len) % len;
-    const yestIdx = (((elapsed - 1 - routine.cycleOffsetDays) % len) + len) % len;
-    todayPlan = routine.days[idx];
-    yesterdayScheduledPlan = routine.days[yestIdx];
+
+    // 1. If user completed a session today, lock todayPlan to the day they completed
+    if (todayCompletedSession) {
+      const matchedIdx = findMatchingRoutineDayForSession(routine, todayCompletedSession);
+      if (matchedIdx >= 0) {
+        todayPlan = routine.days[matchedIdx];
+      }
+    }
+
+    // 2. If user has 0 completed sessions yet and hasn't manually shifted offset, start at the first populated active day (Día 1)
+    if (!todayPlan && sessions.length === 0 && (routine.cycleOffsetDays || 0) === 0) {
+      todayPlan =
+        routine.days.find((d) => !d.isRestDay && d.exercises.length > 0) ??
+        routine.days.find((d) => !d.isRestDay) ??
+        routine.days[0];
+    }
+
+    // 3. If user has previous completed sessions, advance intelligently from their last completed routine day
+    if (!todayPlan && sessions.length > 0) {
+      const sortedSessions = [...sessions].sort(
+        (a, b) => new Date(b.dateIso).getTime() - new Date(a.dateIso).getTime()
+      );
+      const lastSession = sortedSessions[0];
+      const lastSessionDateKey = toLocalDateKey(new Date(lastSession.dateIso));
+      const daysSinceLast = diffCalendarDays(lastSessionDateKey, todayKey);
+      const lastDayIdx = findMatchingRoutineDayForSession(routine, lastSession);
+
+      if (lastDayIdx >= 0 && daysSinceLast >= 1 && daysSinceLast <= 10) {
+        let nextIdx = (lastDayIdx + 1) % len;
+        // If user already rested at least 1 full day (daysSinceLast >= 2) and nextIdx is a rest day,
+        // advance to the next active training day so they aren't stuck on a rest day after resting!
+        if (daysSinceLast >= 2 && routine.days[nextIdx]?.isRestDay) {
+          for (let step = 1; step <= len; step++) {
+            const candIdx = (nextIdx + step) % len;
+            if (!routine.days[candIdx].isRestDay && routine.days[candIdx].exercises.length > 0) {
+              nextIdx = candIdx;
+              break;
+            }
+          }
+        }
+        todayPlan = routine.days[nextIdx];
+        yesterdayScheduledPlan = daysSinceLast === 1 ? null : routine.days[nextIdx];
+      }
+    }
+
+    // 4. Calendar fallback for cyclic routine
+    if (!todayPlan) {
+      const elapsed = diffCalendarDays(routine.cycleAnchorDateKey || todayKey, todayKey);
+      const idx = (((elapsed - (routine.cycleOffsetDays || 0)) % len) + len) % len;
+      const yestIdx = (((elapsed - 1 - (routine.cycleOffsetDays || 0)) % len) + len) % len;
+      todayPlan = routine.days[idx];
+      yesterdayScheduledPlan = routine.days[yestIdx];
+    }
+
+    // 5. Non-empty active day guard: never automatically land on an unconfigured 0-exercise non-rest day
+    // when another active day in the routine has exercises configured.
+    if (todayPlan && !todayPlan.isRestDay && todayPlan.exercises.length === 0) {
+      const firstPopulatedDay = routine.days.find(
+        (d) => !d.isRestDay && d.exercises.length > 0
+      );
+      if (firstPopulatedDay) {
+        todayPlan = firstPopulatedDay;
+      }
+    }
   }
 
-  // Detect if yesterday had a scheduled workout that wasn't logged (and account existed before today)
+  // Detect if yesterday had a scheduled workout with exercises that wasn't logged (and account existed before today)
   const routineCreatedKey = toLocalDateKey(new Date(routine.createdAtIso));
   const existedYesterday = diffCalendarDays(routineCreatedKey, todayKey) >= 1;
   const missedPreviousDayPlan =
@@ -652,7 +833,9 @@ export function resolveTodayRoutineStatus(
     !trainedYesterday &&
     routine.lastSkippedDateKey !== yesterdayKey &&
     yesterdayScheduledPlan &&
-    !yesterdayScheduledPlan.isRestDay
+    !yesterdayScheduledPlan.isRestDay &&
+    yesterdayScheduledPlan.exercises.length > 0 &&
+    yesterdayScheduledPlan.id !== todayPlan?.id
       ? yesterdayScheduledPlan
       : null;
 
@@ -661,6 +844,100 @@ export function resolveTodayRoutineStatus(
     isAdaptedToday: false,
     completedToday,
     missedPreviousDayPlan,
+    currentWeekdayIndex: todayWd,
+    currentWeekdayNameEs,
+    todayDateLabelEs,
+    scheduleModeLabelEs,
+  };
+}
+
+/**
+ * Anchors the user's routine chronology so that `targetDayPlanId` is explicitly locked
+ * as today's active workout day, keeping the cyclic progression 100% synchronized.
+ */
+export function anchorRoutineToDayForToday(
+  routine: UserRoutine,
+  targetDayPlanId: string,
+  now = new Date()
+): UserRoutine {
+  const todayKey = toLocalDateKey(now);
+  const targetIdx = routine.days.findIndex((d) => d.id === targetDayPlanId);
+  if (targetIdx < 0) return routine;
+  const targetDay = routine.days[targetIdx];
+
+  return {
+    ...routine,
+    cycleAnchorDateKey: todayKey,
+    cycleOffsetDays: -targetIdx,
+    lastSkippedDateKey:
+      routine.lastSkippedDateKey === todayKey ? undefined : routine.lastSkippedDateKey,
+    adaptedOverride: {
+      forDateKey: todayKey,
+      dayPlanId: targetDay.id,
+      skippedOnDateKey: todayKey,
+      explanation: `Día sincronizado: entrenando hoy ${targetDay.label} (${targetDay.focusTitle}).`,
+    },
+  };
+}
+
+/**
+ * Populates an empty RoutineDayPlan (0 exercises) with a scientific set of exercises
+ * matching its focusTitle (e.g., Pierna, Torso, Empuje, Tirón, Brazos, Full Body).
+ */
+export function populateRoutineDayByFocus(dayPlan: RoutineDayPlan): RoutineDayPlan {
+  const normFocus = normalizeSearchText(`${dayPlan.focusTitle} ${dayPlan.label}`);
+  let exercises: RoutineExercisePrescription[] = [];
+
+  if (/pierna|legs|lower|cuadriceps|isquio|gluteo|femoral/.test(normFocus)) {
+    exercises = [
+      pickEx('hyp_hack_squat', 3, 10, '8–10 reps', '2', 150, 'Profundidad completa controlada'),
+      pickEx('hyp_romanian_deadlift', 3, 10, '8–10 reps', '2', 150, 'Máxima elongación isquiosural'),
+      pickEx('hyp_leg_press', 3, 12, '10–12 reps', '2', 120),
+      pickEx('hyp_seated_leg_curl', 3, 12, '10–15 reps', '1', 90),
+      pickEx('hyp_leg_extension', 3, 15, '12–15 reps', '1', 90),
+      pickEx('hyp_standing_calf_raise', 4, 15, '12–15 reps', '1', 75),
+    ];
+  } else if (/empuje|push|pecho|pectoral/.test(normFocus)) {
+    exercises = [
+      pickEx('hyp_incline_db_press', 3, 10, '8–10 reps', '2', 120),
+      pickEx('hyp_flat_bench_press', 3, 8, '6–8 reps', '2', 150),
+      pickEx('hyp_pec_deck', 3, 12, '12–15 reps', '1', 90),
+      pickEx('hyp_cable_lateral_raise', 4, 15, '12–15 reps', '1', 75),
+      pickEx('hyp_overhead_cable_tricep', 3, 12, '10–12 reps', '1', 90),
+    ];
+  } else if (/tiron|pull|espalda|dorsal|jale/.test(normFocus)) {
+    exercises = [
+      pickEx('hyp_neutral_lat_pulldown', 3, 10, '8–10 reps', '2', 120),
+      pickEx('hyp_chest_supported_row', 3, 10, '8–10 reps', '2', 120),
+      pickEx('hyp_low_cable_row', 3, 12, '10–12 reps', '2', 105),
+      pickEx('hyp_face_pull', 3, 15, '12–15 reps', '2', 75),
+      pickEx('hyp_bayesian_curl', 3, 12, '10–12 reps', '1', 90),
+    ];
+  } else if (/brazo|biceps|triceps|hombro|deltoide/.test(normFocus)) {
+    exercises = [
+      pickEx('hyp_db_shoulder_press', 3, 10, '8–10 reps', '2', 120),
+      pickEx('hyp_cable_lateral_raise', 4, 15, '12–15 reps', '1', 75),
+      pickEx('hyp_bayesian_curl', 3, 12, '10–12 reps', '1', 90),
+      pickEx('hyp_overhead_cable_tricep', 3, 12, '10–12 reps', '1', 90),
+      pickEx('hyp_hammer_curl', 3, 12, '10–12 reps', '1', 75),
+    ];
+  } else {
+    // Default Torso / Full Upper
+    exercises = [
+      pickEx('hyp_flat_bench_press', 3, 8, '6–8 reps', '2', 120),
+      pickEx('hyp_neutral_lat_pulldown', 3, 10, '8–10 reps', '2', 120),
+      pickEx('hyp_incline_db_press', 3, 10, '8–10 reps', '2', 120),
+      pickEx('hyp_low_cable_row', 3, 10, '8–12 reps', '2', 105),
+      pickEx('hyp_cable_lateral_raise', 3, 15, '12–15 reps', '1', 75),
+      pickEx('hyp_bayesian_curl', 3, 12, '10–12 reps', '1', 90),
+    ];
+  }
+
+  return {
+    ...dayPlan,
+    isRestDay: false,
+    estimatedMinutes: Math.max(45, exercises.length * 10),
+    exercises,
   };
 }
 
@@ -709,7 +986,12 @@ export function adaptRoutineForSkippedDay(
   }
 
   const todayWd = now.getDay();
-  const todayPlan = routine.days.find((d) => d.weekdayIndex === todayWd);
+  const todayPlan = routine.days.find(
+    (d) =>
+      d.weekdayIndex === todayWd ||
+      inferWeekdayIndexFromText(d.label) === todayWd ||
+      inferWeekdayIndexFromText(d.focusTitle) === todayWd
+  );
   if (!todayPlan || todayPlan.isRestDay) {
     return routine;
   }
@@ -719,10 +1001,16 @@ export function adaptRoutineForSkippedDay(
   let targetDayLabel = 'mañana';
   for (let offset = 1; offset <= 3; offset++) {
     const candidateDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
-    const candPlan = routine.days.find((d) => d.weekdayIndex === candidateDate.getDay());
+    const candWd = candidateDate.getDay();
+    const candPlan = routine.days.find(
+      (d) =>
+        d.weekdayIndex === candWd ||
+        inferWeekdayIndexFromText(d.label) === candWd ||
+        inferWeekdayIndexFromText(d.focusTitle) === candWd
+    );
     if (candPlan && candPlan.isRestDay) {
       targetDateKey = toLocalDateKey(candidateDate);
-      targetDayLabel = offset === 1 ? 'mañana' : `el ${WEEKDAY_NAMES_ES[candidateDate.getDay()]}`;
+      targetDayLabel = offset === 1 ? 'mañana' : `el ${WEEKDAY_NAMES_ES[candWd]}`;
       break;
     }
   }
@@ -741,7 +1029,7 @@ export function adaptRoutineForSkippedDay(
 
 /**
  * Builds a single polymorphic WorkoutExercise from a RoutineExercisePrescription,
- * pre-filling prescribed sets, reps, RIR, rest, or historical ghost loads.
+ * pre-filling prescribed sets, reps, RIR, rest, deep biomechanics, or historical ghost loads.
  */
 export function buildWorkoutExerciseFromPrescription(
   pres: RoutineExercisePrescription,
@@ -752,27 +1040,47 @@ export function buildWorkoutExerciseFromPrescription(
   const bw = profile?.weightKg ?? 72;
   const loadScale = profile?.sex === 'female' ? 0.65 : 1.0;
 
-  const catItem =
-    catalog.find((c) => c.id === pres.catalogId) ??
-    BUILTIN_EXERCISES.find((c) => c.id === pres.catalogId);
+  const resolved = resolveExerciseIntelligently(pres.name || 'Ejercicio', pres.mode);
+  const effectiveCatalogId = pres.catalogId || resolved.canonicalCatalogId;
 
-  const ghost = getLastExerciseGhost(sessions, pres.catalogId, pres.name);
+  const catItem =
+    catalog.find((c) => c.id === effectiveCatalogId) ??
+    BUILTIN_EXERCISES.find((c) => c.id === effectiveCatalogId) ??
+    BUILTIN_EXERCISES.find((c) => c.id === resolved.canonicalCatalogId);
+
+  const ghost = getLastExerciseGhost(sessions, effectiveCatalogId, pres.name);
   const ghostSets = cloneSetsFromGhost(ghost?.lastExercise, () => uid('set'), pres.mode);
+
+  const displayName = pres.name?.trim() || catItem?.name || resolved.canonicalName || 'Ejercicio';
 
   const base: WorkoutExercise = {
     id: uid('ex'),
-    catalogId: pres.catalogId,
-    name: catItem?.name ?? pres.name,
-    mode: pres.mode,
-    muscleGroup: catItem?.muscleGroup ?? MODE_META[pres.mode].label,
-    defaultRestSeconds: pres.restSeconds || catItem?.defaultRestSeconds || 120,
+    catalogId: effectiveCatalogId,
+    name: displayName,
+    mode: pres.mode || resolved.mode,
+    muscleGroup: catItem?.muscleGroup ?? resolved.muscleGroup ?? MODE_META[pres.mode].label,
+    defaultRestSeconds:
+      pres.restSeconds || catItem?.defaultRestSeconds || resolved.defaultRestSeconds || 120,
     targetWeightKg: pres.targetWeightKg,
     notes: pres.note,
     calisthenicsSubType: catItem?.calisthenicsSubType ?? 'dynamic',
     cardioDiscipline: catItem?.cardioDiscipline ?? 'jumprope',
+    deepProfile: catItem?.deepProfile ?? resolved.deepProfile,
   };
 
   if (Object.keys(ghostSets).length > 0) {
+    // If prescription explicitly defines targetWeightKg and ghostSets had 0kg, apply targetWeightKg
+    if (
+      pres.targetWeightKg &&
+      pres.targetWeightKg > 0 &&
+      ghostSets.hypertrophySets &&
+      ghostSets.hypertrophySets.every((s) => !s.weightKg || s.weightKg <= 0)
+    ) {
+      ghostSets.hypertrophySets = ghostSets.hypertrophySets.map((s) => ({
+        ...s,
+        weightKg: pres.targetWeightKg!,
+      }));
+    }
     return { ...base, ...ghostSets };
   }
 

@@ -44,7 +44,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s1_1',
               catalogId: 'str_comp_bench_press',
-              name: 'Press de Banca Competición (Pausa 1s)',
+              name: 'Press de Banca Competición',
               mode: 'strength',
               muscleGroup: 'Pectoral / Tríceps / Deltoide',
               defaultRestSeconds: 240,
@@ -65,7 +65,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s1_2',
               catalogId: 'hyp_incline_db_press',
-              name: 'Press Inclinado con Mancuernas (30°)',
+              name: 'Press Inclinado con Mancuernas',
               mode: 'hypertrophy',
               muscleGroup: 'Pectoral Superior',
               defaultRestSeconds: 120,
@@ -78,7 +78,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s1_3',
               catalogId: 'hyp_cable_lateral_raise',
-              name: 'Elevaciones Laterales en Polea (Altura Muñeca)',
+              name: 'Elevaciones Laterales en Polea (altura Muñeca)',
               mode: 'hypertrophy',
               muscleGroup: 'Deltoide Lateral',
               defaultRestSeconds: 75,
@@ -98,7 +98,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s1_4',
               catalogId: 'crd_jr_double_unders',
-              name: 'Salto de Cuerda (Double Unders / Dobles)',
+              name: 'Salto de Cuerda Double Unders',
               mode: 'cardio',
               cardioDiscipline: 'jumprope',
               muscleGroup: 'Potencia Elástica Aquiles',
@@ -192,7 +192,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s3_1',
               catalogId: 'cal_front_lever_iso',
-              name: 'Front Lever (Isométrico)',
+              name: 'Front Lever',
               mode: 'calisthenics',
               calisthenicsSubType: 'isometric',
               muscleGroup: 'Dorsal / Core',
@@ -227,7 +227,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s3_3',
               catalogId: 'crd_run_intervals_400',
-              name: 'Running Series de 400m (VO2 Max)',
+              name: 'Running Series de 400m',
               mode: 'cardio',
               cardioDiscipline: 'running',
               muscleGroup: 'Potencia Aeróbica',
@@ -259,7 +259,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s4_1',
               catalogId: 'hyx_1000m_run',
-              name: '1000m Run (Carrera Comprometida)',
+              name: '1000m Run',
               mode: 'hyrox',
               muscleGroup: 'Aeróbico',
               defaultRestSeconds: 30,
@@ -292,7 +292,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s4_4',
               catalogId: 'hyx_wall_balls_100',
-              name: 'Wall Balls (100 reps)',
+              name: 'Wall Balls (100 Reps)',
               mode: 'hyrox',
               muscleGroup: 'Cuádriceps / Hombros',
               defaultRestSeconds: 60,
@@ -342,7 +342,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s5_1',
               catalogId: 'str_comp_bench_press',
-              name: 'Press de Banca Competición (Pausa 1s)',
+              name: 'Press de Banca Competición',
               mode: 'strength',
               muscleGroup: 'Pectoral / Tríceps',
               defaultRestSeconds: 240,
@@ -363,7 +363,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s5_2',
               catalogId: 'hyp_incline_db_press',
-              name: 'Press Inclinado con Mancuernas (30°)',
+              name: 'Press Inclinado con Mancuernas',
               mode: 'hypertrophy',
               muscleGroup: 'Pectoral Superior',
               defaultRestSeconds: 120,
@@ -375,7 +375,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s5_3',
               catalogId: 'hyp_cable_lateral_raise',
-              name: 'Elevaciones Laterales en Polea (Altura Muñeca)',
+              name: 'Elevaciones Laterales en Polea (altura Muñeca)',
               mode: 'hypertrophy',
               muscleGroup: 'Deltoide Lateral',
               defaultRestSeconds: 75,
@@ -395,7 +395,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s5_4',
               catalogId: 'crd_jr_double_unders',
-              name: 'Salto de Cuerda (Double Unders / Dobles)',
+              name: 'Salto de Cuerda Double Unders',
               mode: 'cardio',
               cardioDiscipline: 'jumprope',
               muscleGroup: 'Potencia Elástica Aquiles',
@@ -479,7 +479,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s6_4',
               catalogId: 'crd_cyc_watt_sprints',
-              name: 'Sprints en AirBike / Bicicleta (Watts)',
+              name: 'Sprints en Airbike / Bicicleta (watts)',
               mode: 'cardio',
               cardioDiscipline: 'cycling',
               muscleGroup: 'Potencia Anaeróbica',
@@ -510,7 +510,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s7_1',
               catalogId: 'cal_front_lever_iso',
-              name: 'Front Lever (Isométrico)',
+              name: 'Front Lever',
               mode: 'calisthenics',
               calisthenicsSubType: 'isometric',
               muscleGroup: 'Dorsal / Core',
@@ -545,7 +545,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s7_3',
               catalogId: 'crd_run_intervals_400',
-              name: 'Running Series de 400m (VO2 Max)',
+              name: 'Running Series de 400m',
               mode: 'cardio',
               cardioDiscipline: 'running',
               muscleGroup: 'Potencia Aeróbica',
@@ -577,7 +577,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s8_1',
               catalogId: 'hyx_1000m_run',
-              name: '1000m Run (Carrera Comprometida)',
+              name: '1000m Run',
               mode: 'hyrox',
               muscleGroup: 'Aeróbico',
               defaultRestSeconds: 30,
@@ -610,7 +610,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s8_4',
               catalogId: 'hyx_wall_balls_100',
-              name: 'Wall Balls (100 reps)',
+              name: 'Wall Balls (100 Reps)',
               mode: 'hyrox',
               muscleGroup: 'Cuádriceps / Hombros',
               defaultRestSeconds: 60,
@@ -661,7 +661,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s9_1',
               catalogId: 'str_comp_bench_press',
-              name: 'Press de Banca Competición (Pausa 1s)',
+              name: 'Press de Banca Competición',
               mode: 'strength',
               muscleGroup: 'Pectoral / Tríceps / Deltoide',
               defaultRestSeconds: 240,
@@ -682,7 +682,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s9_2',
               catalogId: 'hyp_incline_db_press',
-              name: 'Press Inclinado con Mancuernas (30°)',
+              name: 'Press Inclinado con Mancuernas',
               mode: 'hypertrophy',
               muscleGroup: 'Pectoral Superior',
               defaultRestSeconds: 120,
@@ -694,7 +694,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s9_3',
               catalogId: 'hyp_cable_lateral_raise',
-              name: 'Elevaciones Laterales en Polea (Altura Muñeca)',
+              name: 'Elevaciones Laterales en Polea (altura Muñeca)',
               mode: 'hypertrophy',
               muscleGroup: 'Deltoide Lateral',
               defaultRestSeconds: 75,
@@ -714,7 +714,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s9_4',
               catalogId: 'crd_jr_double_unders',
-              name: 'Salto de Cuerda (Double Unders / Dobles)',
+              name: 'Salto de Cuerda Double Unders',
               mode: 'cardio',
               cardioDiscipline: 'jumprope',
               muscleGroup: 'Potencia Elástica Aquiles',
@@ -798,7 +798,7 @@ export function generateSeedSessions(): WorkoutSession[] {
             {
               id: 'ex_s10_4',
               catalogId: 'cal_front_lever_iso',
-              name: 'Front Lever (Isométrico)',
+              name: 'Front Lever',
               mode: 'calisthenics',
               calisthenicsSubType: 'isometric',
               muscleGroup: 'Dorsal / Core',
@@ -830,7 +830,7 @@ export function generateStarterActiveBlocks(): WorkoutBlock[] {
         {
           id: 'active_ex_1',
           catalogId: 'str_comp_bench_press',
-          name: 'Press de Banca Competición (Pausa 1s)',
+          name: 'Press de Banca Competición',
           mode: 'strength',
           muscleGroup: 'Pectoral / Tríceps / Deltoide',
           defaultRestSeconds: 180,
@@ -864,7 +864,7 @@ export function generateStarterActiveBlocks(): WorkoutBlock[] {
         {
           id: 'active_ex_2',
           catalogId: 'hyp_incline_db_press',
-          name: 'Press Inclinado con Mancuernas (30°)',
+          name: 'Press Inclinado con Mancuernas',
           mode: 'hypertrophy',
           muscleGroup: 'Pectoral Superior',
           defaultRestSeconds: 120,
@@ -900,7 +900,7 @@ export function generateStarterActiveBlocks(): WorkoutBlock[] {
         {
           id: 'active_ex_3',
           catalogId: 'crd_jr_double_unders',
-          name: 'Salto de Cuerda (Double Unders / Dobles)',
+          name: 'Salto de Cuerda Double Unders',
           mode: 'cardio',
           cardioDiscipline: 'jumprope',
           muscleGroup: 'Potencia Elástica Aquiles',

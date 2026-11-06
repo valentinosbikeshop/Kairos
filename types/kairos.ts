@@ -156,6 +156,84 @@ export interface CyclingSet {
   completed: boolean;
 }
 
+export type MovementPatternType =
+  | 'Empuje Horizontal'
+  | 'Empuje Vertical'
+  | 'Tracción Horizontal'
+  | 'Tracción Vertical'
+  | 'Dominante de Rodilla'
+  | 'Dominante de Cadera'
+  | 'Aislamiento'
+  | 'Core'
+  | 'Cardio'
+  | 'Híbrido / Funcional'
+  | 'Isométrico de Palanca';
+
+export interface ExerciseDeepProfile {
+  /** Músculos principales / agonistas primarios con detalle anatómico */
+  primaryMuscles: string[];
+  /** Músculos sinergistas / secundarios necesarios para completar el movimiento */
+  secondaryMuscles: string[];
+  /** Músculos estabilizadores necesarios para fijación articular y postura */
+  stabilizerMuscles: string[];
+  /** Patrón biomecánico fundamental */
+  movementPattern: MovementPatternType;
+  /** Clasificación mecánica articular */
+  mechanicType:
+    | 'Compuesto'
+    | 'Aislamiento'
+    | 'Isométrico'
+    | 'Compuesto Multiarticular'
+    | 'Aislamiento Monoarticular'
+    | 'Isométrico Estático'
+    | 'Metabólico / Cíclico';
+  /** Perfil de resistencia (zona de la curva donde ocurre el pico de tensión) */
+  resistanceProfile:
+    | 'Pico en Estiramiento (Lengthened)'
+    | 'Pico en Contracción (Shortened)'
+    | 'Rango Medio (Mid-Range)'
+    | 'Estiramiento (Posición Elongada)'
+    | 'Acortamiento (Contracción Pico)'
+    | 'Rango Medio'
+    | 'Constante / Lineal';
+  /** Implemento o equipo biomecánico identificado */
+  equipmentType: string;
+  /** Ratio Estímulo-Fatiga (1 a 10, mayor = más estímulo hipertrófico por unidad de fatiga) */
+  sfrScore: number;
+  /** Índice de Fatiga Neural / SNC por serie efectiva (1 a 10) */
+  cnsFatigueIndex: number;
+  /** Índice de Fatiga Muscular Local y daño miofibrilar por serie efectiva (1 a 10) */
+  localFatigueIndex: number;
+  /** Estrés articular y articulaciones involucradas */
+  jointStress: {
+    level: 'Bajo' | 'Moderado' | 'Alto';
+    joints: string[];
+  };
+  /** Horas estimadas de recuperación fisiológica post-sesión (24, 36, 48, 72) */
+  recoveryHours: 24 | 36 | 48 | 72 | number;
+  /** Rango óptimo de repeticiones o tiempo bajo tensión */
+  optimalRepRange: string;
+  /** Clave técnica y biomecánica de ejecución */
+  biomechanicalCue: string;
+  /** Coeficiente de fatiga acumulada por serie para cálculos analíticos (0.5 a 2.5) */
+  fatigueCoefficient: number;
+  /** Indica si fue enriquecido por el motor de investigación profunda de IA */
+  isAiResearched?: boolean;
+  /** Fecha ISO en que fue investigado/enriquecido por el motor de IA */
+  researchedAt?: string;
+  researchedAtIso?: string;
+  /** Origen del perfil profundo */
+  researchSource?: 'catalog_scientific' | 'ai_deep_research';
+}
+
+export interface OutOfContextWordAnalysis {
+  hasSuspiciousWords: boolean;
+  suspiciousWords: string[];
+  suggestedCleanName: string;
+  originalInput: string;
+  explanation: string;
+}
+
 export interface WorkoutExercise {
   id: string;
   catalogId: string;
@@ -168,6 +246,7 @@ export interface WorkoutExercise {
   calisthenicsSubType?: CalisthenicsSubType;
   cardioDiscipline?: CardioDiscipline;
   referenceOneRmKg?: number;
+  deepProfile?: ExerciseDeepProfile;
   hypertrophySets?: HypertrophySet[];
   strengthSets?: StrengthSet[];
   calisthenicsDynamicSets?: CalisthenicsDynamicSet[];
@@ -232,6 +311,7 @@ export interface ExerciseCatalogItem {
   };
   biomechanicalCue?: string;
   isCustom?: boolean;
+  deepProfile?: ExerciseDeepProfile;
 }
 
 export interface ActiveTimerConfig {
@@ -291,7 +371,32 @@ export interface ExerciseEvaluation {
   diagnosisTitle?: string;
   diagnosisBody?: string;
   recommendation?: string;
+  deepProfile?: ExerciseDeepProfile;
   history: ExerciseHistoryPoint[];
+}
+
+export interface MuscleFatigueReport {
+  muscleGroup: string;
+  /** Series efectivas directas como músculo principal (últimos 7 días) */
+  directSets7d: number;
+  /** Series efectivas indirectas como músculo sinergista necesario (0.5x por serie, últimos 7 días) */
+  synergistSets7d: number;
+  /** Volumen total ponderado (directas + 0.5 * sinergistas) */
+  effectiveSets7d: number;
+  /** Índice de fatiga acumulada actual (0 a 100%) considerando decaimiento por horas de recuperación */
+  accumulatedFatiguePct: number;
+  /** Contribución de carga al SNC */
+  cnsLoadContribution: number;
+  /** Estado fisiológico actual del grupo muscular */
+  status:
+    | 'Recuperado / Óptimo'
+    | 'Carga Productiva'
+    | 'Fatiga Alta'
+    | 'Sobrecarga Crítica';
+  /** Horas restantes estimadas para recuperación óptima */
+  estimatedRecoveryHoursRemaining: number;
+  /** Ejercicios principales que aportaron estímulo */
+  contributingExercises: string[];
 }
 
 export interface SessionImpactReport {
@@ -378,6 +483,8 @@ export interface RoutineExercisePrescription {
   catalogId: string;
   name: string;
   mode: TrainingMode;
+  muscleGroup?: string;
+  biomechanicalNote?: string;
   sets: number;
   repsNum: number;
   repRangeLabel: string;
@@ -386,6 +493,7 @@ export interface RoutineExercisePrescription {
   targetWeightKg?: number;
   note?: string;
   leakedNextSection?: string;
+  deepProfile?: ExerciseDeepProfile;
 }
 
 export interface RoutineDayPlan {

@@ -40,6 +40,7 @@ export function WorkoutStudio() {
     routine,
     sessions,
     loadRoutineDayIntoWorkout,
+    setActiveRoutineDayForToday,
     addRoutineExerciseToWorkout,
     adaptRoutineOnSkippedDay,
     setOpenRoutineModal,
@@ -68,6 +69,7 @@ export function WorkoutStudio() {
   const [showExerciseSuggestions, setShowExerciseSuggestions] = useState(false);
   const [hasManuallyEditedTitle, setHasManuallyEditedTitle] = useState(false);
   const [selectedSuggestionDayId, setSelectedSuggestionDayId] = useState<string | null>(null);
+  const [loadedDayFeedback, setLoadedDayFeedback] = useState<string | null>(null);
   const [pickerTarget, setPickerTarget] = useState<{
     blockId: string;
     mode: TrainingMode;
@@ -81,41 +83,68 @@ export function WorkoutStudio() {
     [routine, sessions]
   );
 
-  // Active (non-rest) days in the user's routine that contain exercises
+  // Active (non-rest) days in the user's routine
   const activeRoutineDays = useMemo(
     () => (routine?.days ?? []).filter((d) => !d.isRestDay),
     [routine]
   );
 
-  // Default suggestion day = today's scheduled day (if active), else first active routine day
+  // Default suggestion day = today's scheduled day (if active & populated), else first populated active routine day
   useEffect(() => {
     if (!routine) {
       setSelectedSuggestionDayId(null);
       return;
     }
-    if (todayRoutine.todayPlan && !todayRoutine.todayPlan.isRestDay) {
-      setSelectedSuggestionDayId(todayRoutine.todayPlan.id);
-    } else if (activeRoutineDays.length > 0) {
-      setSelectedSuggestionDayId((prev) =>
-        prev && activeRoutineDays.some((d) => d.id === prev) ? prev : activeRoutineDays[0].id
-      );
-    }
+    setSelectedSuggestionDayId((prev) => {
+      if (prev && routine.days.some((d) => d.id === prev && !d.isRestDay)) {
+        return prev;
+      }
+      if (
+        todayRoutine.todayPlan &&
+        !todayRoutine.todayPlan.isRestDay &&
+        todayRoutine.todayPlan.exercises.length > 0
+      ) {
+        return todayRoutine.todayPlan.id;
+      }
+      const firstPopulated = activeRoutineDays.find((d) => d.exercises.length > 0);
+      if (firstPopulated) return firstPopulated.id;
+      if (todayRoutine.todayPlan && !todayRoutine.todayPlan.isRestDay) {
+        return todayRoutine.todayPlan.id;
+      }
+      return activeRoutineDays[0]?.id ?? null;
+    });
   }, [routine, todayRoutine.todayPlan, activeRoutineDays]);
 
   const activeSuggestionDay = useMemo(() => {
     if (!routine) return null;
+    if (selectedSuggestionDayId) {
+      const found = routine.days.find((d) => d.id === selectedSuggestionDayId);
+      if (found) return found;
+    }
     if (
-      selectedSuggestionDayId &&
       todayRoutine.todayPlan &&
-      todayRoutine.todayPlan.id === selectedSuggestionDayId
+      !todayRoutine.todayPlan.isRestDay &&
+      todayRoutine.todayPlan.exercises.length > 0
     ) {
       return todayRoutine.todayPlan;
     }
     return (
-      activeRoutineDays.find((d) => d.id === selectedSuggestionDayId) ??
+      activeRoutineDays.find((d) => d.exercises.length > 0) ??
       (!todayRoutine.todayPlan?.isRestDay ? todayRoutine.todayPlan : activeRoutineDays[0] ?? null)
     );
   }, [activeRoutineDays, routine, selectedSuggestionDayId, todayRoutine.todayPlan]);
+
+  const handleLoadFullRoutineDay = (dayToLoad: NonNullable<typeof activeSuggestionDay>) => {
+    setSelectedSuggestionDayId(dayToLoad.id);
+    setHasManuallyEditedTitle(false);
+    loadRoutineDayIntoWorkout(dayToLoad);
+    const countLabel =
+      dayToLoad.exercises.length > 0 ? `${dayToLoad.exercises.length} ejercicios` : 'ejercicios IA';
+    setLoadedDayFeedback(
+      `✓ ${dayToLoad.label} · ${dayToLoad.focusTitle} (${countLabel}) cargado en tu entrenamiento de hoy.`
+    );
+    setTimeout(() => setLoadedDayFeedback(null), 4000);
+  };
 
   // Synchronize session title to active day focusTitle automatically unless user manually typed a custom title
   useEffect(() => {
@@ -286,16 +315,32 @@ export function WorkoutStudio() {
               )}
 
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <span className="text-[11px] text-brand-muted">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-md border border-gothic/40 bg-gothic/10 px-2 py-0.5 text-[10px] font-mono text-gothic">
+                      📅 Hoy: {todayRoutine.todayDateLabelEs}
+                    </span>
+                    <span className="inline-flex items-center rounded-md border border-stoneborder bg-background/80 px-2 py-0.5 text-[10px] text-brand-muted">
+                      {todayRoutine.scheduleModeLabelEs}
+                    </span>
+                    {todayRoutine.todayPlan.isRestDay && (
+                      <span className="inline-flex items-center rounded-md border border-stoneborder bg-background px-2 py-0.5 text-[10px] text-brand-muted">
+                        Día programado: Descanso
+                      </span>
+                    )}
+                  </div>
+
+                  <span className="block text-[11px] text-brand-muted pt-0.5">
                     {todayRoutine.completedToday
                       ? 'Entrenamiento de hoy cumplido'
-                      : todayRoutine.todayPlan.isRestDay
-                        ? 'Plan de hoy'
-                        : 'Entrenamiento de hoy'}
+                      : activeSuggestionDay
+                        ? `Entrenamiento seleccionado · ${activeSuggestionDay.label}`
+                        : todayRoutine.todayPlan.isRestDay
+                          ? 'Plan de hoy'
+                          : 'Entrenamiento de hoy'}
                   </span>
-                  <h2 className="text-sm font-semibold text-brand mt-0.5">
-                    {todayRoutine.todayPlan.focusTitle}
+                  <h2 className="text-sm font-semibold text-brand">
+                    {activeSuggestionDay?.focusTitle ?? todayRoutine.todayPlan.focusTitle}
                   </h2>
                   {todayRoutine.adaptationMessage && (
                     <p className="text-[11px] text-gothic mt-0.5 leading-snug">
@@ -315,8 +360,15 @@ export function WorkoutStudio() {
                 )}
               </div>
 
-              {/* Day switcher pills if user wants suggestions from today or another day of their routine */}
-              {activeRoutineDays.length > 1 && (
+              {loadedDayFeedback && (
+                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/60 px-3 py-2 text-xs font-medium text-emerald-200 flex items-center gap-2 animate-fade-up">
+                  <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  <span>{loadedDayFeedback}</span>
+                </div>
+              )}
+
+              {/* Day switcher pills so user can see and select any active day of their routine */}
+              {activeRoutineDays.length > 0 && (
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
                   {activeRoutineDays.map((d) => {
                     const isSelected = activeSuggestionDay?.id === d.id;
@@ -327,18 +379,22 @@ export function WorkoutStudio() {
                         type="button"
                         onClick={() => {
                           setSelectedSuggestionDayId(d.id);
+                          setActiveRoutineDayForToday(d.id);
                           if (!hasManuallyEditedTitle) {
                             updateWorkoutTitle(d.focusTitle);
                           }
                         }}
                         className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] transition-colors ${
                           isSelected
-                            ? 'border-gothic/60 bg-elevated text-brand font-medium'
+                            ? 'border-gothic/70 bg-elevated text-brand font-semibold shadow-sm'
                             : 'border-stoneborder bg-background/60 text-brand-muted hover:text-brand'
                         }`}
                       >
                         {d.label}
-                        {isTodayPlan ? ' (Hoy)' : ''} · {d.focusTitle}
+                        {isTodayPlan ? ' (Hoy)' : ''} · {d.focusTitle}{' '}
+                        <span className="font-mono text-[10px] text-gothic">
+                          ({d.exercises.length})
+                        </span>
                       </button>
                     );
                   })}
@@ -355,7 +411,9 @@ export function WorkoutStudio() {
                       className="flex items-center gap-1.5 text-xs font-medium text-brand-muted hover:text-brand transition-colors py-0.5"
                     >
                       <Sparkles className="h-3.5 w-3.5 text-gothic" />
-                      <span>Sugerencias del día ({activeSuggestionDay.focusTitle})</span>
+                      <span>
+                        Ejercicios de {activeSuggestionDay.label} ({activeSuggestionDay.focusTitle})
+                      </span>
                       <span className="rounded-full bg-surface border border-stoneborder px-1.5 py-0.2 text-[10px] font-mono text-gothic">
                         {activeSuggestionDay.exercises.length}
                       </span>
@@ -425,26 +483,59 @@ export function WorkoutStudio() {
                 </div>
               )}
 
-              {!todayRoutine.todayPlan.isRestDay && !todayRoutine.completedToday && (
+              {/* Empty day guard if user clicks a day pill that has 0 exercises */}
+              {activeSuggestionDay &&
+                !activeSuggestionDay.isRestDay &&
+                activeSuggestionDay.exercises.length === 0 && (
+                  <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 space-y-2">
+                    <p className="text-xs text-amber-200/90 leading-snug">
+                      El <strong>{activeSuggestionDay.label}</strong> (
+                      <strong>{activeSuggestionDay.focusTitle}</strong>) aún no tiene ejercicios
+                      asignados en tu rutina.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadFullRoutineDay(activeSuggestionDay)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-elevated border border-gothic/50 py-2 px-3 text-xs font-semibold text-brand hover:border-gothic"
+                      >
+                        <Sparkles className="h-3.5 w-3.5 text-gothic" />
+                        Completar {activeSuggestionDay.focusTitle} con IA y Cargar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOpenRoutineModal(true)}
+                        className="rounded-xl border border-stoneborder bg-background py-2 px-3 text-xs text-brand-muted hover:text-brand"
+                      >
+                        Editar rutina
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+              {activeSuggestionDay && activeSuggestionDay.exercises.length > 0 && (
                 <div className="flex items-center gap-2 pt-0.5">
                   <button
                     type="button"
-                    onClick={() =>
-                      todayRoutine.todayPlan && loadRoutineDayIntoWorkout(todayRoutine.todayPlan)
-                    }
+                    onClick={() => handleLoadFullRoutineDay(activeSuggestionDay)}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-elevated border border-gothic/40 py-2.5 px-3 text-xs font-semibold text-brand hover:border-gothic active:scale-[0.99]"
                   >
                     <Play className="h-3.5 w-3.5 fill-current text-gothic" />
-                    Cargar día completo
+                    <span>
+                      Cargar día completo ({activeSuggestionDay.label} ·{' '}
+                      {activeSuggestionDay.focusTitle})
+                    </span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => adaptRoutineOnSkippedDay('skip_today')}
-                    className="rounded-xl border border-stoneborder bg-background py-2.5 px-3 text-xs text-brand-muted hover:text-brand active:scale-95"
-                  >
-                    Saltar hoy
-                  </button>
+                  {!todayRoutine.todayPlan.isRestDay && !todayRoutine.completedToday && (
+                    <button
+                      type="button"
+                      onClick={() => adaptRoutineOnSkippedDay('skip_today')}
+                      className="rounded-xl border border-stoneborder bg-background py-2.5 px-3 text-xs text-brand-muted hover:text-brand active:scale-95"
+                    >
+                      Saltar hoy
+                    </button>
+                  )}
                 </div>
               )}
             </div>

@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  ExerciseDeepProfile,
+  OutOfContextWordAnalysis,
   RoutineDayPlan,
   RoutineExercisePrescription,
   RoutineRationale,
@@ -16,7 +18,15 @@ import {
   ORDERED_WEEKDAYS,
 } from '@/lib/aiRoutineEngine';
 import { BUILTIN_EXERCISES, smartSearchExercises } from '@/lib/exerciseDatabase';
-import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
+import {
+  detectOutOfContextExerciseWords,
+  resolveExerciseIntelligently,
+  synthesizeExerciseDeepProfile,
+} from '@/lib/exerciseClassifierEngine';
+import {
+  ExerciseDeepProfileModal,
+  ExerciseOutOfContextPromptModal,
+} from '@/components/ExerciseIntelligenceModal';
 import { AiCoachModal } from '@/components/AiCoachModal';
 import { getResolvedWorkoutDefaults, MODE_META, toLocalDateKey, uid } from '@/lib/formatters';
 import {
@@ -24,6 +34,7 @@ import {
   ArrowLeftRight,
   ArrowUp,
   BookOpen,
+  Brain,
   Calendar,
   Check,
   ChevronDown,
@@ -450,6 +461,182 @@ export function RoutineSetupConfigurator({
         };
       })
     );
+  };
+
+  const [pendingRoutineOutOfContext, setPendingRoutineOutOfContext] = useState<{
+    dayId: string;
+    exerciseIndex?: number;
+    mode: TrainingMode;
+    analysis: OutOfContextWordAnalysis;
+  } | null>(null);
+
+  const [inspectedRoutineExercise, setInspectedRoutineExercise] = useState<{
+    dayId: string;
+    name: string;
+    mode: TrainingMode;
+    catalogId?: string;
+    deepProfile?: ExerciseDeepProfile;
+  } | null>(null);
+
+  const [researchingRoutineExKey, setResearchingRoutineExKey] = useState<Record<string, boolean>>(
+    {}
+  );
+
+  const triggerRoutineExerciseResearch = async (
+    dayId: string,
+    exerciseName: string,
+    mode: TrainingMode,
+    catalogId: string
+  ) => {
+    const key = `${dayId}_${catalogId}`;
+    setResearchingRoutineExKey((prev) => ({ ...prev, [key]: true }));
+    try {
+      const resp = await fetch('/api/ai/research-exercise', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exerciseName, mode }),
+      });
+      if (resp.ok) {
+        const json = (await resp.json()) as {
+          ok?: boolean;
+          deepProfile?: ExerciseDeepProfile;
+          classification?: { muscleGroup?: string };
+        };
+        if (json.ok && json.deepProfile) {
+          const researchedProfile = json.deepProfile;
+          setActiveManualList((prev) =>
+            prev.map((d) =>
+              d.id !== dayId
+                ? d
+                : {
+                    ...d,
+                    exercises: d.exercises.map((ex) =>
+                      ex.catalogId === catalogId ||
+                      ex.name.toLowerCase() === exerciseName.toLowerCase()
+                        ? {
+                            ...ex,
+                            muscleGroup:
+                              json.classification?.muscleGroup ||
+                              researchedProfile.primaryMuscles[0]?.split('(')[0]?.trim() ||
+                              ex.muscleGroup,
+                            biomechanicalNote:
+                              researchedProfile.biomechanicalCue || ex.biomechanicalNote,
+                            deepProfile: researchedProfile,
+                          }
+                        : ex
+                    ),
+                  }
+            )
+          );
+          setInspectedRoutineExercise((prev) =>
+            prev && prev.name.toLowerCase() === exerciseName.toLowerCase()
+              ? { ...prev, deepProfile: researchedProfile }
+              : prev
+          );
+        }
+      }
+    } catch {
+      // Fallback already populated via synthesizeExerciseDeepProfile
+    } finally {
+      setResearchingRoutineExKey((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
+  const commitRoutineExerciseAdditionOrEdit = (
+    dayId: string,
+    finalName: string,
+    mode: TrainingMode,
+    exerciseIndex?: number
+  ) => {
+    const clean = finalName.trim();
+    if (!clean) return;
+    const resolved = resolveExerciseIntelligently(clean, mode);
+    const defs = getResolvedWorkoutDefaults(profile);
+    const hasCustomRest = Boolean(profile?.workoutDefaults?.defaultRestSeconds);
+
+    if (typeof exerciseIndex === 'number') {
+      // Update existing exercise in day
+      setActiveManualList((prev) =>
+        prev.map((d) =>
+          d.id !== dayId
+            ? d
+            : {
+                ...d,
+                exercises: d.exercises.map((item, i) =>
+                  i === exerciseIndex
+                    ? {
+                        ...item,
+                        name: resolved.canonicalName || clean,
+                        catalogId: resolved.canonicalCatalogId,
+                        muscleGroup: resolved.muscleGroup,
+                        biomechanicalNote: resolved.biomechanicalCue,
+                        deepProfile: resolved.deepProfile,
+                      }
+                    : item
+                ),
+              }
+        )
+      );
+    } else {
+      // Append new custom exercise to day
+      const customPres: RoutineExercisePrescription = {
+        catalogId: resolved.canonicalCatalogId,
+        name: resolved.canonicalName || clean,
+        mode: resolved.mode,
+        muscleGroup: resolved.muscleGroup,
+        biomechanicalNote: resolved.biomechanicalCue,
+        deepProfile: resolved.deepProfile,
+        sets: defs.defaultEffectiveSets,
+        repsNum: defs.defaultReps,
+        repRangeLabel: `${defs.defaultReps} reps`,
+        rir: defs.defaultRir,
+        restSeconds: hasCustomRest
+          ? defs.defaultRestSeconds
+          : resolved.defaultRestSeconds || MODE_META[mode].defaultRest,
+      };
+      setActiveManualList((prev) =>
+        prev.map((d) =>
+          d.id === dayId ? { ...d, exercises: [...d.exercises, customPres] } : d
+        )
+      );
+      setExSearch('');
+    }
+
+    setPendingRoutineOutOfContext(null);
+
+    if (!resolved.isCanonicalMatch) {
+      void triggerRoutineExerciseResearch(
+        dayId,
+        resolved.canonicalName || clean,
+        resolved.mode || mode,
+        resolved.canonicalCatalogId
+      );
+    }
+  };
+
+  const handleValidateAndCommitRoutineExercise = (
+    dayId: string,
+    rawName: string,
+    mode: TrainingMode,
+    exerciseIndex?: number
+  ) => {
+    const trimmed = rawName.trim();
+    if (!trimmed) return;
+    const ooc = detectOutOfContextExerciseWords(trimmed);
+    if (ooc.hasSuspiciousWords) {
+      setPendingRoutineOutOfContext({
+        dayId,
+        exerciseIndex,
+        mode,
+        analysis: ooc,
+      });
+      return;
+    }
+    commitRoutineExerciseAdditionOrEdit(dayId, trimmed, mode, exerciseIndex);
   };
 
   useEffect(() => {
@@ -1160,7 +1347,7 @@ export function RoutineSetupConfigurator({
                             className="flex items-center justify-between gap-3 rounded-lg border border-stoneborder/70 bg-[#14121A] px-3 py-2 text-xs transition-colors hover:border-stoneborder"
                           >
                             {/* Editable exercise name */}
-                            <div className="flex items-center gap-2 min-w-[210px] max-w-[270px] shrink-0">
+                            <div className="flex items-center gap-1.5 min-w-[215px] max-w-[285px] shrink-0">
                               <span className="font-mono text-[11px] text-gothic font-semibold shrink-0">
                                 {idx + 1}.
                               </span>
@@ -1168,10 +1355,43 @@ export function RoutineSetupConfigurator({
                                 type="text"
                                 value={ex.name}
                                 onChange={(e) => updateExerciseName(day.id, idx, e.target.value)}
+                                onBlur={(e) => {
+                                  const val = e.target.value.trim();
+                                  if (val) {
+                                    handleValidateAndCommitRoutineExercise(
+                                      day.id,
+                                      val,
+                                      ex.mode || day.primaryMode,
+                                      idx
+                                    );
+                                  }
+                                }}
                                 placeholder="Nombre del ejercicio"
                                 title="Toca para editar el nombre de este ejercicio"
                                 className="w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-xs font-medium text-brand hover:border-stoneborder focus:border-gothic focus:bg-background focus:outline-none transition-colors"
                               />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setInspectedRoutineExercise({
+                                    dayId: day.id,
+                                    name: ex.name,
+                                    mode: ex.mode || day.primaryMode,
+                                    catalogId: ex.catalogId,
+                                    deepProfile:
+                                      ex.deepProfile ||
+                                      synthesizeExerciseDeepProfile(
+                                        ex.name,
+                                        ex.mode || day.primaryMode,
+                                        ex.catalogId
+                                      ),
+                                  })
+                                }
+                                title="Ver músculos principales, necesarios y variables de fatiga"
+                                className="shrink-0 rounded-md border border-gothic/30 bg-gothic/10 p-1 text-gothic hover:bg-gothic/20"
+                              >
+                                <Brain className="h-3 w-3" />
+                              </button>
                             </div>
 
                             {/* Exercise Configuration Controls */}
@@ -1404,38 +1624,17 @@ export function RoutineSetupConfigurator({
                         {exSearch.trim().length >= 2 && (
                           <button
                             type="button"
-                            onClick={() => {
-                              const cleanCustom = exSearch.trim();
-                              const resolved = resolveExerciseIntelligently(cleanCustom, day.primaryMode);
-                              const defs = getResolvedWorkoutDefaults(profile);
-                              const hasCustomRest = Boolean(
-                                profile?.workoutDefaults?.defaultRestSeconds
-                              );
-                              const customPres: RoutineExercisePrescription = {
-                                catalogId: resolved.canonicalCatalogId,
-                                name: resolved.canonicalName,
-                                mode: resolved.mode,
-                                sets: defs.defaultEffectiveSets,
-                                repsNum: defs.defaultReps,
-                                repRangeLabel: `${defs.defaultReps} reps`,
-                                rir: defs.defaultRir,
-                                restSeconds: hasCustomRest
-                                  ? defs.defaultRestSeconds
-                                  : resolved.defaultRestSeconds || MODE_META[day.primaryMode].defaultRest,
-                              };
-                              setActiveManualList((prev) =>
-                                prev.map((d) =>
-                                  d.id === day.id
-                                    ? { ...d, exercises: [...d.exercises, customPres] }
-                                    : d
-                                )
-                              );
-                              setExSearch('');
-                            }}
+                            onClick={() =>
+                              handleValidateAndCommitRoutineExercise(
+                                day.id,
+                                exSearch.trim(),
+                                day.primaryMode
+                              )
+                            }
                             className="w-full flex items-center justify-between rounded-lg border border-gothic/35 bg-gothic/10 px-2.5 py-1.5 text-left text-xs text-brand"
                           >
                             <span className="truncate">
-                              Añadir &ldquo;{exSearch.trim()}&rdquo; tal cual
+                              Añadir e investigar &ldquo;{exSearch.trim()}&rdquo; con IA
                             </span>
                             <Plus className="h-3.5 w-3.5 shrink-0 text-gothic" />
                           </button>
@@ -1450,6 +1649,11 @@ export function RoutineSetupConfigurator({
                             catalogId: item.id,
                             name: item.name,
                             mode: item.mode,
+                            muscleGroup: item.muscleGroup,
+                            biomechanicalNote: item.biomechanicalCue,
+                            deepProfile:
+                              item.deepProfile ||
+                              synthesizeExerciseDeepProfile(item.name, item.mode, item.id),
                             sets: defs.defaultEffectiveSets,
                             repsNum: defs.defaultReps,
                             repRangeLabel: `${defs.defaultReps} reps`,
@@ -1533,6 +1737,56 @@ export function RoutineSetupConfigurator({
         <Check className="h-4 w-4" />
         Guardar Mi Rutina
       </button>
+
+      {/* Out-of-Context Word Verification Prompt Modal */}
+      <ExerciseOutOfContextPromptModal
+        isOpen={Boolean(pendingRoutineOutOfContext)}
+        analysis={pendingRoutineOutOfContext?.analysis ?? null}
+        onConfirmClean={(cleanedName) => {
+          if (!pendingRoutineOutOfContext) return;
+          commitRoutineExerciseAdditionOrEdit(
+            pendingRoutineOutOfContext.dayId,
+            cleanedName,
+            pendingRoutineOutOfContext.mode,
+            pendingRoutineOutOfContext.exerciseIndex
+          );
+        }}
+        onConfirmIntentional={(originalName) => {
+          if (!pendingRoutineOutOfContext) return;
+          commitRoutineExerciseAdditionOrEdit(
+            pendingRoutineOutOfContext.dayId,
+            originalName,
+            pendingRoutineOutOfContext.mode,
+            pendingRoutineOutOfContext.exerciseIndex
+          );
+        }}
+        onCancel={() => setPendingRoutineOutOfContext(null)}
+      />
+
+      {/* Deep Biomechanical Profile Inspection Modal */}
+      <ExerciseDeepProfileModal
+        isOpen={Boolean(inspectedRoutineExercise)}
+        onClose={() => setInspectedRoutineExercise(null)}
+        exerciseName={inspectedRoutineExercise?.name || ''}
+        mode={inspectedRoutineExercise?.mode}
+        catalogId={inspectedRoutineExercise?.catalogId}
+        deepProfile={inspectedRoutineExercise?.deepProfile}
+        isResearching={Boolean(
+          inspectedRoutineExercise &&
+            researchingRoutineExKey[
+              `${inspectedRoutineExercise.dayId}_${inspectedRoutineExercise.catalogId || ''}`
+            ]
+        )}
+        onTriggerResearch={() => {
+          if (!inspectedRoutineExercise) return;
+          void triggerRoutineExerciseResearch(
+            inspectedRoutineExercise.dayId,
+            inspectedRoutineExercise.name,
+            inspectedRoutineExercise.mode,
+            inspectedRoutineExercise.catalogId || ''
+          );
+        }}
+      />
     </div>
   );
 }

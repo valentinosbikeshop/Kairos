@@ -11,6 +11,12 @@ import {
   WorkoutSession,
 } from '@/types/kairos';
 import { ActiveWorkoutDraft, createEmptyWorkoutDraft, defaultAudioSettings } from '@/lib/storage';
+import {
+  cleanActiveWorkoutExercises,
+  cleanAllRoutineExercises,
+  cleanWorkoutSessionExercises,
+  sanitizeExerciseName,
+} from '@/lib/exerciseClassifierEngine';
 
 export interface StoredAccountRecord {
   id: string;
@@ -98,7 +104,7 @@ export function compactSessionForStorage(session: WorkoutSession): WorkoutSessio
       exercises: (b.exercises || []).map((ex) => ({
         id: ex.id,
         catalogId: ex.catalogId,
-        name: (ex.name || '').trim().slice(0, 80),
+        name: sanitizeExerciseName((ex.name || '').trim()).slice(0, 80),
         mode: ex.mode,
         muscleGroup: ex.muscleGroup || 'General',
         defaultRestSeconds: ex.defaultRestSeconds ?? 90,
@@ -595,6 +601,19 @@ export async function updateUserStateById(
     activeWorkout: ActiveWorkoutDraft | null;
   }>
 ): Promise<StoredAccountRecord | null> {
+  // Sanitize routine and active workout to guarantee clean noise-free exercise names
+  const cleanedRoutine =
+    patch.routine && Array.isArray(patch.routine.days)
+      ? {
+          ...patch.routine,
+          days: cleanAllRoutineExercises(patch.routine.days).cleanedDays,
+        }
+      : patch.routine;
+
+  const cleanedActiveWorkout = patch.activeWorkout
+    ? cleanActiveWorkoutExercises(patch.activeWorkout).activeWorkout
+    : patch.activeWorkout;
+
   // Compact sessions to minimize database storage consumption
   const compactedSessions = Array.isArray(patch.sessions)
     ? patch.sessions.map(compactSessionForStorage)
@@ -611,11 +630,11 @@ export async function updateUserStateById(
         updatePayload.onboarding_completed = patch.onboardingCompleted;
       }
       if (patch.profile !== undefined) updatePayload.profile = patch.profile;
-      if (patch.routine !== undefined) updatePayload.routine = patch.routine;
+      if (patch.routine !== undefined) updatePayload.routine = cleanedRoutine;
       if (compactedSessions !== undefined) updatePayload.sessions = compactedSessions;
       if (patch.customExercises !== undefined) updatePayload.custom_exercises = patch.customExercises;
       if (patch.audioSettings !== undefined) updatePayload.audio_settings = patch.audioSettings;
-      if (patch.activeWorkout !== undefined) updatePayload.active_workout = patch.activeWorkout;
+      if (patch.activeWorkout !== undefined) updatePayload.active_workout = cleanedActiveWorkout;
 
       const { data, error } = await supabase
         .from('kairos_users')
@@ -663,13 +682,13 @@ export async function updateUserStateById(
         ? patch.onboardingCompleted
         : current.onboardingCompleted,
     profile: patch.profile !== undefined ? patch.profile : current.profile,
-    routine: patch.routine !== undefined ? patch.routine : current.routine,
+    routine: patch.routine !== undefined ? (cleanedRoutine ?? null) : current.routine,
     sessions: compactedSessions !== undefined ? compactedSessions : current.sessions,
     customExercises: Array.isArray(patch.customExercises)
       ? patch.customExercises
       : current.customExercises,
     audioSettings: patch.audioSettings !== undefined ? patch.audioSettings : current.audioSettings,
-    activeWorkout: patch.activeWorkout !== undefined ? patch.activeWorkout : current.activeWorkout,
+    activeWorkout: patch.activeWorkout !== undefined ? (cleanedActiveWorkout ?? null) : current.activeWorkout,
   };
 
   db.users[idx] = updated;

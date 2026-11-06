@@ -16,6 +16,7 @@ import {
   CalisthenicsSubType,
   CardioDiscipline,
   ExerciseCatalogItem,
+  ExerciseDeepProfile,
   ExerciseEvaluation,
   HyroxStationName,
   RoutineDayPlan,
@@ -34,7 +35,14 @@ import {
   cloneSetsFromGhost,
   getLastExerciseGhost,
 } from '@/lib/exerciseDatabase';
-import { resolveExerciseIntelligently } from '@/lib/exerciseClassifierEngine';
+import {
+  cleanActiveWorkoutExercises,
+  cleanAllRoutineExercises,
+  cleanWorkoutSessionExercises,
+  resolveExerciseIntelligently,
+  sanitizeExerciseName,
+  synthesizeExerciseDeepProfile,
+} from '@/lib/exerciseClassifierEngine';
 import {
   ActiveWorkoutDraft,
   createEmptyWorkoutDraft,
@@ -49,8 +57,10 @@ import {
 } from '@/lib/storage';
 import {
   adaptRoutineForSkippedDay,
+  anchorRoutineToDayForToday,
   buildWorkoutBlocksFromRoutineDay,
   buildWorkoutExerciseFromPrescription,
+  populateRoutineDayByFocus,
 } from '@/lib/aiRoutineEngine';
 import { kairosAudio } from '@/lib/audioEngine';
 import { buildSessionImpactReport, evaluateAllExercises } from '@/lib/analyticsEngine';
@@ -84,6 +94,8 @@ interface KairosContextValue {
 
   // Routine Daily Actions
   loadRoutineDayIntoWorkout: (dayPlan: RoutineDayPlan) => void;
+  setActiveRoutineDayForToday: (dayPlanId: string) => void;
+  populateEmptyRoutineDay: (dayPlanId: string) => RoutineDayPlan | null;
   addRoutineExerciseToWorkout: (
     prescription: RoutineExercisePrescription,
     dayFocusTitle?: string
@@ -157,6 +169,14 @@ interface KairosContextValue {
   repeatSessionAsTemplate: (session: WorkoutSession) => void;
   exportBackupJson: () => string;
   importBackupJson: (jsonText: string) => { ok: boolean; message: string };
+
+  // Deep Exercise Intelligence & Research Pipeline
+  researchingExercises: Record<string, boolean>;
+  researchCustomExercise: (
+    name: string,
+    mode?: TrainingMode,
+    catalogId?: string
+  ) => Promise<ExerciseDeepProfile>;
 }
 
 const KairosContext = createContext<KairosContextValue | null>(null);
@@ -173,6 +193,8 @@ function createDefaultExerciseEntry(
   const defs = getResolvedWorkoutDefaults(profile);
   const hasCustomRest = Boolean(profile?.workoutDefaults?.defaultRestSeconds);
   const defaultRest = MODE_META[targetMode].defaultRest;
+  const deepProfile =
+    item.deepProfile ?? synthesizeExerciseDeepProfile(item.name, targetMode, item.id);
 
   const base: WorkoutExercise = {
     id: uid('ex'),
@@ -180,6 +202,7 @@ function createDefaultExerciseEntry(
     name: item.name,
     mode: targetMode,
     muscleGroup: item.muscleGroup,
+    deepProfile,
     defaultRestSeconds: hasCustomRest
       ? defs.defaultRestSeconds
       : item.mode === targetMode
@@ -387,20 +410,44 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
   const [titleRequiredError, setTitleRequiredError] = useState(false);
   const [sessionElapsedSeconds, setSessionElapsedSeconds] = useState(0);
   const [latestImpactReport, setLatestImpactReport] = useState<SessionImpactReport | null>(null);
+  const [researchingExercises, setResearchingExercises] = useState<Record<string, boolean>>({});
 
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const applySnapshot = useCallback((snap: PersistedUserDataSnapshot) => {
+    // 1. Sanitize routine exercises (remove extracted noise words & parentheticals)
+    const cleanRoutine = snap.routine
+      ? {
+          ...snap.routine,
+          days: cleanAllRoutineExercises(snap.routine.days).cleanedDays,
+        }
+      : null;
+
+    // 2. Sanitize historical sessions
+    const cleanSessions = Array.isArray(snap.sessions)
+      ? snap.sessions.map((s) => cleanWorkoutSessionExercises(s).session)
+      : [];
+
+    // 3. Sanitize active workout draft blocks
+    const cleanActiveWorkout = snap.activeWorkout
+      ? cleanActiveWorkoutExercises(snap.activeWorkout).activeWorkout
+      : createEmptyWorkoutDraft();
+
     setUser(snap.user);
     setProfile(snap.profile ?? null);
-    setRoutine(snap.routine ?? null);
-    setSessions(Array.isArray(snap.sessions) ? snap.sessions : []);
+    setRoutine(cleanRoutine);
+    setSessions(cleanSessions);
     setCustomExercises(Array.isArray(snap.customExercises) ? snap.customExercises : []);
     const audio = snap.audioSettings ?? defaultAudioSettings();
     setAudioSettings(audio);
     kairosAudio.updateSettings(audio);
-    setActiveWorkout(snap.activeWorkout ?? createEmptyWorkoutDraft());
-    saveCachedUserSnapshot(snap);
+    setActiveWorkout(cleanActiveWorkout);
+    saveCachedUserSnapshot({
+      ...snap,
+      routine: cleanRoutine,
+      sessions: cleanSessions,
+      activeWorkout: cleanActiveWorkout,
+    });
   }, []);
 
   const pushStateToServer = useCallback(
@@ -846,21 +893,88 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
     [customExercises]
   );
 
+  const setActiveRoutineDayForToday = useCallback(
+    (dayPlanId: string) => {
+      setRoutine((prev) => {
+        if (!prev) return prev;
+        const anchored = anchorRoutineToDayForToday(prev, dayPlanId);
+        void pushStateToServer({ routine: anchored });
+        return anchored;
+      });
+    },
+    [pushStateToServer]
+  );
+
+  const populateEmptyRoutineDay = useCallback(
+    (dayPlanId: string): RoutineDayPlan | null => {
+      let populatedResult: RoutineDayPlan | null = null;
+      setRoutine((prev) => {
+        if (!prev) return prev;
+        const target = prev.days.find((d) => d.id === dayPlanId);
+        if (!target) return prev;
+        const populated = populateRoutineDayByFocus(target);
+        populatedResult = populated;
+        const nextRoutine: UserRoutine = {
+          ...prev,
+          days: prev.days.map((d) => (d.id === dayPlanId ? populated : d)),
+        };
+        void pushStateToServer({ routine: nextRoutine });
+        return nextRoutine;
+      });
+      return populatedResult;
+    },
+    [pushStateToServer]
+  );
+
   const loadRoutineDayIntoWorkout = useCallback(
     (dayPlan: RoutineDayPlan) => {
-      const blocks = buildWorkoutBlocksFromRoutineDay(dayPlan, catalog, sessions, profile);
+      let effectiveDayPlan = dayPlan;
+
+      // Guard: if a non-rest day has 0 exercises configured, auto-populate it scientifically so it never loads blank
+      if (!effectiveDayPlan.isRestDay && effectiveDayPlan.exercises.length === 0) {
+        effectiveDayPlan = populateRoutineDayByFocus(effectiveDayPlan);
+        setRoutine((prev) => {
+          if (!prev) return prev;
+          const updated: UserRoutine = {
+            ...prev,
+            days: prev.days.map((d) => (d.id === effectiveDayPlan.id ? effectiveDayPlan : d)),
+          };
+          const anchored = anchorRoutineToDayForToday(updated, effectiveDayPlan.id);
+          void pushStateToServer({ routine: anchored });
+          return anchored;
+        });
+      } else {
+        // Synchronize the routine chronology so today is anchored to the loaded day
+        setRoutine((prev) => {
+          if (!prev) return prev;
+          const anchored = anchorRoutineToDayForToday(prev, effectiveDayPlan.id);
+          void pushStateToServer({ routine: anchored });
+          return anchored;
+        });
+      }
+
+      const blocks = buildWorkoutBlocksFromRoutineDay(
+        effectiveDayPlan,
+        catalog,
+        sessions,
+        profile
+      );
+      kairosAudio.playSetCheckFeedback();
       setTitleRequiredError(false);
-      setActiveWorkout({
-        title: dayPlan.focusTitle || '',
-        titlePlaceholder: `Ej: ${dayPlan.focusTitle}`,
+
+      const nextWorkout: ActiveWorkoutDraft = {
+        title: effectiveDayPlan.focusTitle || '',
+        titlePlaceholder: `Ej: ${effectiveDayPlan.focusTitle}`,
         startedAtMs: Date.now(),
         notes: '',
         blocks,
         timerLogs: [],
-      });
+      };
+      setActiveWorkout(nextWorkout);
+      void pushStateToServer({ activeWorkout: nextWorkout });
       setActiveTab('workout');
     },
-    [catalog, profile, sessions]
+    [catalog, profile, pushStateToServer, sessions]
   );
 
   const addRoutineExerciseToWorkout = useCallback(
@@ -1037,6 +1151,124 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
     [profile, sessions]
   );
 
+  const researchCustomExercise = useCallback(
+    async (
+      name: string,
+      mode: TrainingMode = 'hypertrophy',
+      catalogId?: string
+    ): Promise<ExerciseDeepProfile> => {
+      const cleanName = name.trim();
+      const resolved = resolveExerciseIntelligently(cleanName, mode);
+      const targetCatalogId = catalogId || resolved.canonicalCatalogId;
+      const trackKey = targetCatalogId || cleanName.toLowerCase();
+
+      setResearchingExercises((prev) => ({
+        ...prev,
+        [trackKey]: true,
+        [cleanName.toLowerCase()]: true,
+      }));
+
+      let finalDeepProfile: ExerciseDeepProfile = {
+        ...resolved.deepProfile,
+        isAiResearched: true,
+        researchedAt: new Date().toISOString(),
+      };
+      let finalMuscleGroup = resolved.muscleGroup;
+
+      try {
+        const resp = await fetch('/api/ai/research-exercise', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ exerciseName: cleanName, mode }),
+        });
+        if (resp.ok) {
+          const json = (await resp.json()) as {
+            ok?: boolean;
+            deepProfile?: ExerciseDeepProfile;
+            classification?: { muscleGroup?: string };
+          };
+          if (json.ok && json.deepProfile) {
+            finalDeepProfile = json.deepProfile;
+            if (json.classification?.muscleGroup) {
+              finalMuscleGroup = json.classification.muscleGroup;
+            }
+          }
+        }
+      } catch {
+        // Fallback to local scientific synthesis
+      }
+
+      // 1. Update customExercises catalog
+      setCustomExercises((prev) =>
+        prev.map((item) =>
+          item.id === targetCatalogId || item.name.toLowerCase() === cleanName.toLowerCase()
+            ? {
+                ...item,
+                muscleGroup: finalMuscleGroup || item.muscleGroup,
+                biomechanicalCue: finalDeepProfile.biomechanicalCue,
+                deepProfile: finalDeepProfile,
+              }
+            : item
+        )
+      );
+
+      // 2. Update activeWorkout exercises
+      setActiveWorkout((prev) => ({
+        ...prev,
+        blocks: prev.blocks.map((blk) => ({
+          ...blk,
+          exercises: blk.exercises.map((ex) =>
+            ex.catalogId === targetCatalogId || ex.name.toLowerCase() === cleanName.toLowerCase()
+              ? {
+                  ...ex,
+                  muscleGroup: finalMuscleGroup || ex.muscleGroup,
+                  deepProfile: finalDeepProfile,
+                }
+              : ex
+          ),
+        })),
+      }));
+
+      // 3. Update routine exercises if present
+      setRoutine((prev) => {
+        if (!prev) return prev;
+        let changed = false;
+        const nextDays = prev.days.map((d) => ({
+          ...d,
+          exercises: d.exercises.map((rx) => {
+            if (
+              rx.catalogId === targetCatalogId ||
+              rx.name.toLowerCase() === cleanName.toLowerCase()
+            ) {
+              changed = true;
+              return {
+                ...rx,
+                muscleGroup: finalMuscleGroup || rx.muscleGroup,
+                biomechanicalNote: finalDeepProfile.biomechanicalCue || rx.biomechanicalNote,
+                deepProfile: finalDeepProfile,
+              };
+            }
+            return rx;
+          }),
+        }));
+        if (!changed) return prev;
+        const updatedRoutine = { ...prev, days: nextDays };
+        void pushStateToServer({ routine: updatedRoutine });
+        return updatedRoutine;
+      });
+
+      setResearchingExercises((prev) => {
+        const next = { ...prev };
+        delete next[trackKey];
+        delete next[cleanName.toLowerCase()];
+        return next;
+      });
+
+      return finalDeepProfile;
+    },
+    [pushStateToServer]
+  );
+
   const createAndAddCustomExercise = useCallback(
     (
       blockId: string,
@@ -1059,6 +1291,8 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
         mode: resolved.mode || mode,
         muscleGroup: options?.muscleGroup || resolved.muscleGroup,
         defaultRestSeconds: resolved.defaultRestSeconds || MODE_META[mode].defaultRest,
+        biomechanicalCue: resolved.biomechanicalCue,
+        deepProfile: resolved.deepProfile,
         calisthenicsSubType:
           mode === 'calisthenics' ? options?.calisthenicsSubType ?? 'dynamic' : undefined,
         cardioDiscipline:
@@ -1066,10 +1300,22 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
         isCustom: !resolved.isCanonicalMatch,
       };
 
-      setCustomExercises((prev) => [customItem, ...prev]);
+      setCustomExercises((prev) => [
+        customItem,
+        ...prev.filter((p) => p.id !== customItem.id),
+      ]);
       addExerciseToBlock(blockId, customItem);
+
+      // If not in BUILTIN_EXERCISES, automatically launch deep recognition & research pipeline
+      if (!resolved.isCanonicalMatch) {
+        void researchCustomExercise(
+          resolved.canonicalName,
+          resolved.mode || mode,
+          resolved.canonicalCatalogId
+        );
+      }
     },
-    [addExerciseToBlock]
+    [addExerciseToBlock, researchCustomExercise]
   );
 
   const batchCalibrateExercises = useCallback(
@@ -1167,6 +1413,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       ...b,
       exercises: b.exercises.map((ex) => ({
         ...ex,
+        name: sanitizeExerciseName(ex.name),
         hypertrophySets: ex.hypertrophySets?.map((s) => ({ ...s, completed: true })),
         strengthSets: ex.strengthSets?.map((s) => ({ ...s, completed: true })),
         calisthenicsDynamicSets: ex.calisthenicsDynamicSets?.map((s) => ({
@@ -1348,6 +1595,8 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       saveUserRoutine,
       completeOnboarding,
       loadRoutineDayIntoWorkout,
+      setActiveRoutineDayForToday,
+      populateEmptyRoutineDay,
       addRoutineExerciseToWorkout,
       adaptRoutineOnSkippedDay,
       openRoutineModal,
@@ -1387,6 +1636,8 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       repeatSessionAsTemplate,
       exportBackupJson,
       importBackupJson,
+      researchingExercises,
+      researchCustomExercise,
     }),
     [
       hydrated,
@@ -1401,6 +1652,8 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       saveUserRoutine,
       completeOnboarding,
       loadRoutineDayIntoWorkout,
+      setActiveRoutineDayForToday,
+      populateEmptyRoutineDay,
       addRoutineExerciseToWorkout,
       adaptRoutineOnSkippedDay,
       openRoutineModal,
@@ -1437,6 +1690,8 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       repeatSessionAsTemplate,
       exportBackupJson,
       importBackupJson,
+      researchingExercises,
+      researchCustomExercise,
     ]
   );
 

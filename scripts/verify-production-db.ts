@@ -7,7 +7,18 @@ import {
   verifySignedToken,
   compactSessionForStorage,
 } from '../lib/serverDb';
-import { generateScientificRoutine } from '../lib/aiRoutineEngine';
+import {
+  anchorRoutineToDayForToday,
+  buildWorkoutBlocksFromRoutineDay,
+  generateScientificRoutine,
+  populateRoutineDayByFocus,
+  resolveTodayRoutineStatus,
+} from '../lib/aiRoutineEngine';
+import { parseAgenticUserCommand } from '../lib/aiChatEngine';
+import {
+  detectOutOfContextExerciseWords,
+  resolveExerciseIntelligently,
+} from '../lib/exerciseClassifierEngine';
 import { WorkoutSession } from '../types/kairos';
 
 async function runProductionSuite() {
@@ -198,6 +209,68 @@ async function runProductionSuite() {
   }
 
   console.log(`✅ 8. Motor de IA Científica verificado: Generó semana de 7 días (4 activos) y ciclo de ${cyclicalRoutine.days.length} días (3 activos + descansos programados) con evidencia citada.`);
+
+  // Test 9: Cronología, Detección de Día, Anclaje y "Cargar Día Completo"
+  const status0 = resolveTodayRoutineStatus(cyclicalRoutine, []);
+  if (!status0.todayPlan || status0.todayPlan.isRestDay || status0.todayPlan.exercises.length === 0) {
+    throw new Error('FALLO: resolveTodayRoutineStatus sin sesiones previas no inició en el Día 1 activo con ejercicios.');
+  }
+  const secondActiveDay = cyclicalRoutine.days.find((d) => !d.isRestDay && d.id !== status0.todayPlan?.id)!;
+  const anchoredRoutine = anchorRoutineToDayForToday(cyclicalRoutine, secondActiveDay.id);
+  const statusAnchored = resolveTodayRoutineStatus(anchoredRoutine, []);
+  if (statusAnchored.todayPlan?.id !== secondActiveDay.id) {
+    throw new Error('FALLO: anchorRoutineToDayForToday no sincronizó el día seleccionado como el día de hoy.');
+  }
+  const loadedBlocks = buildWorkoutBlocksFromRoutineDay(secondActiveDay);
+  const loadedExCount = loadedBlocks.reduce((acc, b) => acc + b.exercises.length, 0);
+  if (loadedExCount !== secondActiveDay.exercises.length || !loadedBlocks[0].exercises[0].deepProfile) {
+    throw new Error('FALLO: buildWorkoutBlocksFromRoutineDay no extrajo todos los ejercicios con su deepProfile.');
+  }
+  const emptyLegDay = populateRoutineDayByFocus({
+    id: 'rday_empty_leg',
+    label: 'Día 2',
+    focusTitle: 'Pierna',
+    isRestDay: false,
+    primaryMode: 'hypertrophy',
+    estimatedMinutes: 60,
+    exercises: [],
+  });
+  if (emptyLegDay.exercises.length < 5) {
+    throw new Error('FALLO: populateRoutineDayByFocus no pobló el día vacío de Pierna.');
+  }
+  console.log(`✅ 9. Cronología inteligente, sincronización de días y "Cargar día completo" verificados (${loadedExCount} ejercicios con deepProfile y autocompletado de días vacíos).`);
+
+  // Test 10: Capacidades Agénticas del Chatbot (Edición de rutina, carga de día, actualización de perfil)
+  const chatCtx = {
+    userName: 'Valentino',
+    userWeightKg: 77,
+    routineName: 'Mi Rutina Personal',
+    routineDays: cyclicalRoutine.days,
+  };
+  const cmdLoad = parseAgenticUserCommand('Cárgame el Día 1 en mi entrenamiento de hoy', chatCtx);
+  if (!cmdLoad || cmdLoad.suggestedActions[0]?.type !== 'load_routine_day_to_workout' || !cmdLoad.suggestedActions[0]?.autoExecute) {
+    throw new Error('FALLO: Chatbot agéntico no ejecutó comando de cargar día al entrenamiento.');
+  }
+  const cmdAdd = parseAgenticUserCommand('Agrega Elevaciones Laterales en Polea 4x15 al Día 1', chatCtx);
+  if (!cmdAdd || cmdAdd.suggestedActions[0]?.type !== 'update_routine_days') {
+    throw new Error('FALLO: Chatbot agéntico no ejecutó comando de agregar ejercicio a la rutina.');
+  }
+  const cmdProfile = parseAgenticUserCommand('Actualiza mi peso a 78.5 kg', chatCtx);
+  if (!cmdProfile || cmdProfile.suggestedActions[0]?.payload.profilePatch?.weightKg !== 78.5) {
+    throw new Error('FALLO: Chatbot agéntico no ejecutó actualización de peso en el perfil.');
+  }
+  console.log('✅ 10. Chatbot Agéntico verificado: Carga de días, edición directa de rutinas y actualización de perfil biométrico funcionando al 100%.');
+
+  // Test 11: Inteligencia Biomecánica Profunda y Detección de Palabras Fuera de Contexto
+  const outOfCtx = detectOutOfContextExerciseWords('Press Inclinado con Mancuernas martes revisar nota');
+  if (!outOfCtx.hasSuspiciousWords || !outOfCtx.suggestedCleanName.includes('Press Inclinado')) {
+    throw new Error('FALLO: detectOutOfContextExerciseWords no detectó palabras fuera de contexto.');
+  }
+  const deepResolved = resolveExerciseIntelligently('Sentadilla Hack');
+  if (!deepResolved.deepProfile || deepResolved.deepProfile.primaryMuscles.length === 0) {
+    throw new Error('FALLO: resolveExerciseIntelligently no generó deepProfile.');
+  }
+  console.log(`✅ 11. Inteligencia biomecánica profunda (${deepResolved.canonicalName} -> SFR ${deepResolved.deepProfile.sfrScore}/10) y detector de palabras fuera de contexto verificados.`);
 
   console.log('--- TODOS LOS TESTS DE PRODUCCIÓN Y PERSISTENCIA PASARON CON ÉXITO (100%) ---');
 }

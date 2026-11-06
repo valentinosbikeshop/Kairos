@@ -4,7 +4,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { RoutineDayPlan } from '@/types/kairos';
 import { useKairos } from '@/lib/kairosContext';
 import { useTimerEngine } from '@/components/TimerEngine';
-import { AiActionSuggestion } from '@/lib/aiChatEngine';
+import {
+  AiActionSuggestion,
+  generateScientificAiResponse,
+} from '@/lib/aiChatEngine';
 import { getResolvedWorkoutDefaults, uid } from '@/lib/formatters';
 import { BUILTIN_EXERCISES } from '@/lib/exerciseDatabase';
 import {
@@ -168,46 +171,46 @@ const CONTEXT_CONFIGS: Record<
 > = {
   routine_manager: {
     badge: 'ARQUITECTURA DE RUTINA',
-    subtitle: 'Consultor de Volumen, Jerarquía y Programación Base',
+    subtitle: 'Agente Interactivo de Edición, Volumen y Programación Base',
     getGreeting: (name?: string) =>
-      `### ❖ KAIROS AI COACH\n**Arquitectura y Optimización de Rutina Base**\n\nHola${
+      `### ❖ KAIROS AI COACH\n**Agente Interactivo de Rutina Base**\n\nHola${
         name ? ` ${name}` : ''
-      }. Estoy analizando la arquitectura biomecánica de tu rutina base para maximizar tu balance muscular y progresión.\n\nPuedo ayudarte a:\n- **Equilibrar el volumen semanal** por grupo muscular (10 a 20 series directas efectivas respaldadas por la literatura científica).\n- **Optimizar el orden biomecánico** de tus ejercicios según demanda axial del SNC y curvas de longitud-tensión.\n- **Sustituir ejercicios estancados** por variantes con mejor perfil de resistencia y relación estímulo-fatiga.\n- **Ajustar divisiones**: Torso/Pierna, Empuje/Tirón/Pierna o esquemas cíclicos.\n\n¿Qué aspecto de tu rutina base deseas perfeccionar hoy?`,
+      }. Tengo acceso directo para analizar y **editar tu rutina base** en tiempo real.\n\nPuedes pedirme que ejecute acciones directas como:\n- **Auditoría y autocompletado**: *"Analiza mi rutina"* o *"Completa mi día de Pierna con ejercicios"*.\n- **Añadir o sustituir ejercicios**: *"Agrega Elevaciones Laterales en Polea 3x15 al Día 1"* o *"Cambia Press de Banca por Press Inclinado con Mancuernas"*.\n- **Ajustar series, reps o cargas**: *"Cambia Remo en Polea Baja a 3 series de 10 reps con 45kg"*.\n- **Cargar día para entrenar hoy**: *"Cárgame el Día 1 completo en mi entrenamiento de hoy"*.\n\n¿Qué ajuste deseas que realice en tu rutina?`,
     suggestions: [
-      '¿Cómo optimizar el volumen semanal de mi rutina base?',
-      'Recomiéndame el mejor orden de ejercicios para mi día de Torso',
-      '¿Qué ejercicio puedo sustituir para mejorar mi progresión en espalda?',
+      'Analiza mi rutina actual y revisa si falta algún ejercicio',
+      'Agrega Elevaciones Laterales en Polea 3x15 al Día 1',
+      'Cárgame el Día 1 completo en mi entrenamiento de hoy',
+      'Completa mi día de Pierna con ejercicios científicos',
       '¿Cuántas series efectivas por grupo muscular debo hacer a la semana?',
-      '¿Cómo alternar días de fuerza máxima con hipertrofia?',
     ],
   },
   workout: {
     badge: 'SESIÓN EN VIVO',
-    subtitle: 'Consultor Táctico de Entrenamiento en Tiempo Real',
+    subtitle: 'Agente Táctico de Entrenamiento en Tiempo Real',
     getGreeting: (name?: string) =>
-      `### ❖ KAIROS AI COACH\n**Consultor Táctico en Vivo**\n\nHola${
+      `### ❖ KAIROS AI COACH\n**Agente Táctico en Vivo**\n\nHola${
         name ? ` ${name}` : ''
-      }. Estoy sincronizado con tu entrenamiento de hoy. Puedo asesorarte al instante en:\n- **Biomecánica y rango activo** en tiempo real.\n- **Calibración de RIR/RPE** y tempo excéntrico para maximizar tensión mecánica.\n- **Sustitutos inmediatos** si una máquina está ocupada en el gimnasio.\n- **Descansos intra-serie óptimos** según el sistema neuromuscular.\n\n¿En qué ejercicio o serie necesitas soporte ahora?`,
+      }. Estoy sincronizado con tu entrenamiento de hoy y puedo modificarlo en tiempo real:\n- **Cargar cualquier día de tu rutina**: *"Cárgame el Día 1 de Torso"* o *"Carga el Día 2 de Pierna"*.\n- **Biomecánica profunda y SFR** de cada ejercicio.\n- **Sustitutos inmediatos** si una máquina está ocupada.\n- **Iniciar temporizadores de descanso** automáticos.\n\n¿Qué necesitas que cargue o ajuste en tu sesión de hoy?`,
     suggestions: [
+      'Cárgame el Día 1 completo en mi entrenamiento de hoy',
+      'Cárgame el Día 2 de Pierna para entrenar hoy',
       '¿Cuánto tiempo debería descansar exactamente en este ejercicio?',
       'Sustituto rápido si la máquina que necesito está ocupada',
-      '¿Cómo calibrar si mi serie fue a RIR 1 o RIR 2?',
-      'Biomecánica del rango activo en este movimiento',
     ],
   },
   general: {
     badge: 'ALTO RENDIMIENTO',
-    subtitle: 'Consultor Científico Integral de Ciencias del Ejercicio y Nutrición',
+    subtitle: 'Agente Científico Integral de Ciencias del Ejercicio, Rutinas y Perfil',
     getGreeting: (name?: string) =>
-      `### ❖ KAIROS AI COACH\n**Consultor Científico de Alto Rendimiento**\n\nHola${
+      `### ❖ KAIROS AI COACH\n**Agente Científico Interactivo de Alto Rendimiento**\n\nHola${
         name ? ` ${name}` : ''
-      }. Como tu consultor científico de cabecera en KAIROS, tengo dominio completo sobre toda la arquitectura de la app y las ciencias del deporte:\n\n- **Biomecánica deportiva y tensión mecánica**: optimización de perfiles de resistencia, brazos de momento y curvas de longitud-tensión.\n- **Culturismo natural, fuerza y calistenia**: sobrecarga progresiva sistemática, autorregulación (RIR/RPE) y periodización avanzada.\n- **Nutrición basada en evidencia**: cálculo exacto de proteínas por peso corporal, hidratación, umbral de leucina y sincronización peri-entrenamiento.\n- **Gestión integral de KAIROS**: si te sugiero ejercicios, podrás **añadirlos con 1 toque a tu entrenamiento o a tu rutina base**.\n\n¿En qué área de tu preparación física o deportiva deseas profundizar hoy?`,
+      }. Como tu agente de inteligencia artificial en KAIROS, no solo respondo consultas científicas sino que **interactúo directamente con tu información y tu cuenta**:\n\n- **Edición directa de tu rutina**: *"Agrega Elevaciones Laterales 3x15 al Día 1"*, *"Cambia Press de Banca por Press Inclinado con Mancuernas"* o *"Elimina Fondos de mi rutina"*.\n- **Carga de entrenamientos**: *"Cárgame el Día 1 de Torso para entrenar hoy"*.\n- **Actualización de tu perfil**: *"Actualiza mi peso a 78 kg"* o *"Pon mi descanso por defecto en 120s"*.\n- **Biomecánica y Nutrición**: cálculo exacto de macros, SFR, fatiga acumulada y músculos sinergistas.\n\n¿Qué acción o análisis deseas que realice hoy?`,
     suggestions: [
+      'Analiza mi rutina actual y dime qué puedo mejorar',
+      'Cárgame el Día 1 en mi entrenamiento de hoy',
+      'Agrega Elevaciones Laterales en Polea 3x15 al Día 1',
       '¿Cuánta proteína y agua necesito según mi peso corporal?',
-      '¿Cómo aplicar sobrecarga progresiva sin riesgo de sobreentrenamiento?',
-      'Recomiéndame el mejor ejercicio para deltoide lateral y cómo ejecutarlo',
-      '¿Cómo estructurar descansos para hipertrofia muscular máxima?',
-      'Biomecánica y ejecución técnica de la Sentadilla Búlgara',
+      'Biomecánica y músculos trabajados en Sentadilla Hack',
     ],
   },
   history: {
@@ -247,8 +250,12 @@ export function AiCoachModal({
     user,
     profile,
     routine,
+    saveUserProfile,
     saveUserRoutine,
+    loadRoutineDayIntoWorkout,
     activeWorkout,
+    updateWorkoutTitle,
+    clearActiveWorkoutBlocks,
     addBlockToWorkout,
     addExerciseToBlock,
     createAndAddCustomExercise,
@@ -270,6 +277,7 @@ export function AiCoachModal({
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [executedActionIds, setExecutedActionIds] = useState<Set<string>>(() => new Set());
 
   // Selector for adding to routine day
   const [routineDayTarget, setRoutineDayTarget] = useState<{
@@ -322,11 +330,25 @@ export function AiCoachModal({
     setMessages(nextMessages);
     setIsLoading(true);
 
-    try {
-      const activeExNames = activeWorkout.blocks.flatMap((b) =>
-        b.exercises.map((e) => e.name)
-      );
+    const activeExNames = activeWorkout.blocks.flatMap((b) =>
+      b.exercises.map((e) => e.name)
+    );
 
+    const chatContext = {
+      userName: user?.displayName || user?.username,
+      userWeightKg: profile?.weightKg,
+      userHeightCm: profile?.heightCm,
+      userGoal: profile?.primaryGoal,
+      experienceLevel: profile?.experienceLevel,
+      routineName: routine?.name,
+      routineDaysCount: (routineDays || routine?.days)?.filter((d) => !d.isRestDay).length,
+      routineDays: routineDays || routine?.days,
+      activeWorkoutTitle: activeWorkout.title,
+      activeWorkoutExerciseNames: activeExNames,
+      currentScreen: contextHint,
+    };
+
+    try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -335,19 +357,7 @@ export function AiCoachModal({
             role: m.role,
             content: m.content,
           })),
-          context: {
-            userName: user?.displayName || user?.username,
-            userWeightKg: profile?.weightKg,
-            userHeightCm: profile?.heightCm,
-            userGoal: profile?.primaryGoal,
-            experienceLevel: profile?.experienceLevel,
-            routineName: routine?.name,
-            routineDaysCount: (routineDays || routine?.days)?.filter((d) => !d.isRestDay).length,
-            routineDays: routineDays || routine?.days,
-            activeWorkoutTitle: activeWorkout.title,
-            activeWorkoutExerciseNames: activeExNames,
-            currentScreen: contextHint,
-          },
+          context: chatContext,
         }),
       });
 
@@ -359,50 +369,152 @@ export function AiCoachModal({
       };
 
       if (data.ok && data.message) {
+        const incomingActions = data.suggestedActions || [];
         setMessages((prev) => [
           ...prev,
           {
             id: uid('msg'),
             role: 'assistant',
             content: data.message!.content,
-            suggestedActions: data.suggestedActions || [],
+            suggestedActions: incomingActions,
             timestamp: Date.now(),
           },
         ]);
+
+        // Auto-execute direct imperative agentic actions immediately
+        for (const act of incomingActions) {
+          if (act.autoExecute) {
+            handleExecuteAction(act);
+          }
+        }
       } else {
+        // Zero-error guarantee: fall back to built-in scientific AI engine immediately
+        const fallback = await generateScientificAiResponse(query, chatContext);
         setMessages((prev) => [
           ...prev,
           {
             id: uid('msg'),
             role: 'assistant',
-            content:
-              'No se pudo conectar con el motor de IA en este momento. Inténtalo nuevamente.',
+            content: fallback.content,
+            suggestedActions: fallback.suggestedActions || [],
             timestamp: Date.now(),
           },
         ]);
+        for (const act of fallback.suggestedActions || []) {
+          if (act.autoExecute) handleExecuteAction(act);
+        }
       }
     } catch {
+      // Zero-error guarantee: even completely offline or under network drop, answer instantly
+      const fallback = await generateScientificAiResponse(query, chatContext);
       setMessages((prev) => [
         ...prev,
         {
           id: uid('msg'),
           role: 'assistant',
-          content:
-            'Hubo un problema de conexión. Comprueba tu red local o vuelve a formular tu pregunta.',
+          content: fallback.content,
+          suggestedActions: fallback.suggestedActions || [],
           timestamp: Date.now(),
         },
       ]);
+      for (const act of fallback.suggestedActions || []) {
+        if (act.autoExecute) handleExecuteAction(act);
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const markActionExecuted = (actionId: string, feedbackMsg: string) => {
+    setExecutedActionIds((prev) => {
+      const next = new Set(prev);
+      next.add(actionId);
+      return next;
+    });
+    setActionFeedback(feedbackMsg);
+    setTimeout(() => setActionFeedback(null), 4000);
   };
 
   const handleExecuteAction = (action: AiActionSuggestion) => {
     if (action.type === 'start_rest_timer') {
       const sec = action.payload.restSeconds || 90;
       startRestTimer(sec);
-      setActionFeedback(`⏱️ Timer de descanso iniciado (${sec}s)`);
-      setTimeout(() => setActionFeedback(null), 3500);
+      markActionExecuted(action.id, `⏱️ Timer de descanso iniciado (${sec}s)`);
+      return;
+    }
+
+    if (action.type === 'load_routine_day_to_workout') {
+      const availableDays = routineDays || routine?.days || [];
+      const targetDay =
+        availableDays.find((d) => d.id === action.payload.targetDayId) ||
+        availableDays.find((d) => !d.isRestDay && d.exercises.length > 0) ||
+        availableDays[0];
+      if (!targetDay) return;
+
+      loadRoutineDayIntoWorkout(targetDay);
+      markActionExecuted(
+        action.id,
+        `⚡ ${targetDay.label} (${targetDay.focusTitle}) cargado en tu entrenamiento de hoy`
+      );
+      return;
+    }
+
+    if (action.type === 'update_routine_days' && action.payload.updatedDays) {
+      const updated = action.payload.updatedDays;
+      if (onApplyRoutineDays) {
+        onApplyRoutineDays(updated);
+      }
+      if (routine) {
+        void saveUserRoutine({ ...routine, days: updated }, false);
+      }
+      markActionExecuted(action.id, '✓ Tu rutina base fue actualizada y guardada con éxito');
+      return;
+    }
+
+    if (action.type === 'generate_and_save_routine' && action.payload.generatedRoutine) {
+      const newRtn = action.payload.generatedRoutine;
+      if (onApplyRoutineDays) {
+        onApplyRoutineDays(newRtn.days);
+      }
+      void saveUserRoutine(newRtn, false);
+      markActionExecuted(action.id, `✓ Nueva rutina "${newRtn.name}" activada en tu cuenta`);
+      return;
+    }
+
+    if (action.type === 'update_user_profile' && action.payload.profilePatch && profile) {
+      const patch = action.payload.profilePatch;
+      const nextProfile = {
+        ...profile,
+        ...(patch.weightKg !== undefined ? { weightKg: patch.weightKg } : {}),
+        ...(patch.heightCm !== undefined ? { heightCm: patch.heightCm } : {}),
+        ...(patch.bodyFatPercent !== undefined ? { bodyFatPercent: patch.bodyFatPercent } : {}),
+        ...(patch.primaryGoal !== undefined ? { primaryGoal: patch.primaryGoal } : {}),
+        workoutDefaults: {
+          ...getResolvedWorkoutDefaults(profile),
+          ...(patch.defaultRestSeconds !== undefined
+            ? { defaultRestSeconds: patch.defaultRestSeconds }
+            : {}),
+          ...(patch.defaultEffectiveSets !== undefined
+            ? { defaultEffectiveSets: patch.defaultEffectiveSets }
+            : {}),
+          ...(patch.defaultReps !== undefined ? { defaultReps: patch.defaultReps } : {}),
+        },
+        updatedAtIso: new Date().toISOString(),
+      };
+      void saveUserProfile(nextProfile);
+      markActionExecuted(action.id, '✓ Parámetros de tu perfil actualizados y guardados');
+      return;
+    }
+
+    if (action.type === 'modify_active_workout' && action.payload.workoutModification) {
+      const mod = action.payload.workoutModification;
+      if (mod.op === 'clear') {
+        clearActiveWorkoutBlocks();
+        markActionExecuted(action.id, '✓ Entrenamiento activo vaciado');
+      } else if (mod.op === 'update_title' && mod.newTitle) {
+        updateWorkoutTitle(mod.newTitle);
+        markActionExecuted(action.id, `✓ Título actualizado a "${mod.newTitle}"`);
+      }
       return;
     }
 
@@ -438,8 +550,7 @@ export function AiCoachModal({
         }
       }
 
-      setActionFeedback(`✓ "${exName}" añadido a tu entrenamiento activo`);
-      setTimeout(() => setActionFeedback(null), 3500);
+      markActionExecuted(action.id, `✓ "${exName}" añadido a tu entrenamiento activo`);
       return;
     }
 
@@ -449,22 +560,32 @@ export function AiCoachModal({
         onApplyRoutineDays(cleaned);
       }
       if (routine) {
-        saveUserRoutine({ ...routine, days: cleaned }, false);
+        void saveUserRoutine({ ...routine, days: cleaned }, false);
       }
-      setActionFeedback('✓ Nombres limpios y cargas asignadas con éxito a tu rutina');
-      setTimeout(() => setActionFeedback(null), 3500);
+      markActionExecuted(
+        action.id,
+        '✓ Nombres limpios y cargas asignadas con éxito a tu rutina'
+      );
       return;
     }
 
     if (action.type === 'add_to_routine') {
+      if (action.payload.targetDayId && routine) {
+        handleConfirmAddToRoutineDay(action.payload.targetDayId, action);
+        markActionExecuted(
+          action.id,
+          `📋 "${action.payload.exerciseName}" añadido a tu rutina`
+        );
+        return;
+      }
       setRoutineDayTarget({ action });
     }
   };
 
-  const handleConfirmAddToRoutineDay = (dayId: string) => {
-    if (!routine || !routineDayTarget) return;
+  const handleConfirmAddToRoutineDay = (dayId: string, directAction?: AiActionSuggestion) => {
+    const action = directAction || routineDayTarget?.action;
+    if (!routine || !action) return;
 
-    const action = routineDayTarget.action;
     const exName = action.payload.exerciseName || 'Ejercicio';
     const targetMode = action.payload.mode || 'hypertrophy';
     const defs = getResolvedWorkoutDefaults(profile);
@@ -481,6 +602,9 @@ export function AiCoachModal({
         repRangeLabel: `${action.payload.reps || defs.defaultReps} reps`,
         rir: defs.defaultRir,
         restSeconds: action.payload.restSeconds || defs.defaultRestSeconds,
+        ...(action.payload.targetWeightKg
+          ? { targetWeightKg: action.payload.targetWeightKg }
+          : {}),
       };
 
       return {
@@ -496,10 +620,12 @@ export function AiCoachModal({
       updatedAtIso: new Date().toISOString(),
     };
 
-    saveUserRoutine(updatedRoutine, false);
+    if (onApplyRoutineDays) {
+      onApplyRoutineDays(updatedDays);
+    }
+    void saveUserRoutine(updatedRoutine, false);
     setRoutineDayTarget(null);
-    setActionFeedback(`📋 "${exName}" añadido a tu rutina`);
-    setTimeout(() => setActionFeedback(null), 3500);
+    markActionExecuted(action.id, `📋 "${exName}" añadido a tu rutina`);
   };
 
   return (
@@ -582,19 +708,32 @@ export function AiCoachModal({
                 <div className="mt-2.5 flex flex-col gap-1.5 w-full max-w-[92%]">
                   <span className="text-[10px] font-semibold text-gothic uppercase tracking-wider flex items-center gap-1">
                     <Sparkles className="h-3 w-3" />
-                    Acciones directas disponibles:
+                    Acciones directas en tu cuenta:
                   </span>
-                  {m.suggestedActions.map((action) => (
-                    <button
-                      key={action.id}
-                      type="button"
-                      onClick={() => handleExecuteAction(action)}
-                      className="inline-flex items-center justify-between rounded-xl border border-gothic/40 bg-surface px-3 py-2 text-left text-xs font-medium text-brand hover:border-gothic hover:bg-gothic/15 active:scale-95 transition-all shadow-sm"
-                    >
-                      <span className="truncate pr-2">{action.label}</span>
-                      <Plus className="h-3.5 w-3.5 shrink-0 text-gothic" />
-                    </button>
-                  ))}
+                  {m.suggestedActions.map((action) => {
+                    const isDone = executedActionIds.has(action.id);
+                    return (
+                      <button
+                        key={action.id}
+                        type="button"
+                        onClick={() => handleExecuteAction(action)}
+                        className={`inline-flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-medium transition-all shadow-sm active:scale-95 ${
+                          isDone
+                            ? 'border-emerald-500/50 bg-emerald-950/50 text-emerald-200'
+                            : 'border-gothic/40 bg-surface text-brand hover:border-gothic hover:bg-gothic/15'
+                        }`}
+                      >
+                        <span className="truncate pr-2">
+                          {isDone ? `✓ Aplicado: ${action.label.replace(/^[✓⚡📋✨▶️]+\s*/, '')}` : action.label}
+                        </span>
+                        {isDone ? (
+                          <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                        ) : (
+                          <Plus className="h-3.5 w-3.5 shrink-0 text-gothic" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

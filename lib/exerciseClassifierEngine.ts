@@ -1,4 +1,12 @@
-import { ExerciseCatalogItem, RirValue, RoutineDayPlan, TrainingMode } from '@/types/kairos';
+import {
+  ExerciseCatalogItem,
+  ExerciseDeepProfile,
+  MovementPatternType,
+  OutOfContextWordAnalysis,
+  RirValue,
+  RoutineDayPlan,
+  TrainingMode,
+} from '@/types/kairos';
 import { BUILTIN_EXERCISES, normalizeSearchText, smartSearchExercises } from '@/lib/exerciseDatabase';
 
 export interface ExerciseClassificationResult {
@@ -13,16 +21,9 @@ export interface ExerciseClassificationResult {
   defaultRestSeconds: number;
   matchedAlias?: string;
   biomechanicalCue?: string;
-  movementPattern?:
-    | 'Empuje Horizontal'
-    | 'Empuje Vertical'
-    | 'Tracción Horizontal'
-    | 'Tracción Vertical'
-    | 'Dominante de Rodilla'
-    | 'Dominante de Cadera'
-    | 'Aislamiento'
-    | 'Core'
-    | 'Cardio';
+  movementPattern?: MovementPatternType;
+  deepProfile: ExerciseDeepProfile;
+  outOfContextAnalysis: OutOfContextWordAnalysis;
   targetWeightKg?: number;
   extractedSets?: number;
   extractedReps?: number;
@@ -81,6 +82,692 @@ const NOISE_WORDS = [
   /\bpesado\b/gi,
   /\bliviano\b/gi,
 ];
+
+// Explicit out-of-context words that users might accidentally type or paste in an exercise name
+const EXPLICIT_OUT_OF_CONTEXT_WORDS = new Set([
+  'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo',
+  'hoy', 'ayer', 'manana', 'semana', 'mes', 'enero', 'febrero', 'marzo', 'abril',
+  'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  'ojo', 'nota', 'notas', 'recordar', 'acordarse', 'cuidado', 'dolor', 'duele',
+  'molestia', 'lesion', 'cansado', 'suave', 'tranquilo', 'rapido', 'lento',
+  'casa', 'gimnasio', 'gym', 'parque', 'amigo', 'coach', 'entrenador', 'profe',
+  'prueba', 'test', 'error', 'equivocado', 'borrar', 'cambiar', 'opcional',
+  'siempre', 'nunca', 'quizas', 'talvez', 'creo', 'mejor', 'peor', 'bueno', 'malo',
+  'hola', 'gracias', 'porfa', 'plis', 'xd', 'jaja', 'jeje', 'wtf', 'bro', 'tio', 'che',
+  'comentario', 'extra', 'duda', 'pregunta', 'revisar', 'pendiente', 'falta',
+]);
+
+// Comprehensive valid fitness, anatomical, biomechanical, equipment, and movement lexicon
+const BASE_FITNESS_LEXICON = new Set([
+  // Connectives & prepositions
+  'de', 'del', 'la', 'las', 'el', 'los', 'en', 'con', 'sin', 'por', 'para', 'a', 'al', 'y', 'e', 'o', 'u', 'un', 'una', 'uno', 'dos', 'tres',
+  'c', 'm', 'b', 'x', 'z', 'w', 'v', 't', 'l',
+  // Movements & actions
+  'press', 'empuje', 'remo', 'row', 'rows', 'jalon', 'jalones', 'pull', 'pulldown', 'pullup', 'pullups', 'pullover',
+  'chin', 'chinup', 'chinups', 'dominada', 'dominadas', 'sentadilla', 'sentadillas', 'squat', 'squats',
+  'peso', 'muerto', 'deadlift', 'hip', 'thrust', 'puente', 'bridge', 'curl', 'curls',
+  'extension', 'extensiones', 'flexion', 'flexiones', 'pushup', 'pushups', 'dip', 'dips', 'fondo', 'fondos',
+  'apertura', 'aperturas', 'fly', 'flies', 'cruce', 'cruces', 'crossover', 'vuelo', 'vuelos',
+  'elevacion', 'elevaciones', 'raise', 'raises', 'lateral', 'laterales', 'frontal', 'frontales', 'posterior', 'posteriores',
+  'pajaro', 'pajaros', 'encogimiento', 'encogimientos', 'shrug', 'shrugs', 'zancada', 'zancadas', 'estocada', 'estocadas',
+  'lunge', 'lunges', 'prensa', 'leg', 'hack', 'hacka', 'sissy', 'pendulo', 'pendulum', 'patada', 'patadas', 'kickback',
+  'abduccion', 'abducciones', 'aduccion', 'aducciones', 'abductor', 'abductores', 'aductor', 'aductores',
+  'crunch', 'crunches', 'plancha', 'plank', 'twist', 'giro', 'rotacion', 'woodchopper', 'pallof',
+  'swing', 'snatch', 'clean', 'jerk', 'thruster', 'thrusters', 'burpee', 'burpees', 'salto', 'saltos', 'jump', 'jumps',
+  'box', 'step', 'stepup', 'sprint', 'sprints', 'carrera', 'correr', 'running', 'run', 'trote', 'caminata', 'paseo',
+  'carry', 'farmer', 'farmers', 'granjero', 'trineo', 'sled', 'push', 'arrastre', 'skierg', 'rower', 'ergometro',
+  'assault', 'bike', 'bici', 'bicicleta', 'ciclismo', 'natacion', 'nado', 'cuerda', 'comba', 'battle', 'rope', 'ropes',
+  'wall', 'ball', 'balls', 'lanzamiento', 'lanzamientos', 'slam', 'medball', 'muscle', 'up', 'ups', 'lever', 'front', 'back',
+  'planche', 'handstand', 'pino', 'hspu', 'pistol', 'dragon', 'flag', 'lsit', 'vsit', 'hollow', 'arch', 'skin', 'cat',
+  'tuck', 'straddle', 'full', 'negativa', 'negativas', 'isometrico', 'isometrica', 'pausa', 'tempo', 'explosivo', 'pliometrico',
+  'good', 'morning', 'buenos', 'dias', 'nordic', 'nordico', 'glute', 'ham', 'ghd', 'reverse', 'hyper', 'hyperextension',
+  'hiperextension', 'hiperextensiones', 'seal', 'pendlay', 'meadows', 'yates', 'kroc', 'helms', 'arnold', 'zottman',
+  'drag', 'spider', 'arana', 'bayesian', 'bayesiano', 'predicador', 'scott', 'concentrado', 'martillo', 'hammer',
+  'inverso', 'inversa', 'frances', 'rompecraneos', 'rompecabezas', 'skull', 'crusher', 'jm', 'tate', 'katana', 'copa',
+  'overhead', 'militar', 'military', 'pushpress', 'landmine', 'viking', 'vikingo', 'guillotina', 'spoto', 'larsen',
+  'floor', 'board', 'pin', 'rack', 'block', 'deficit', 'sumo', 'convencional', 'rumano', 'rdl', 'stiff', 'rigidas',
+  'zercher', 'goblet', 'jefferson', 'anderson', 'belt', 'bulgara', 'bulgaras', 'bulgarian', 'split', 'cossack', 'curtsy',
+  'kas', 'frog', 'donkey', 'burro', 'standing', 'seated', 'lying', 'incline', 'decline', 'flat', 'high', 'low',
+  'wide', 'narrow', 'close', 'open', 'single', 'double', 'one', 'two', 'arm', 'arms', 'hand', 'hands',
+  'cristos', 'serrucho', 'trasnuca', 'costurera', 'estricta', 'estrictas', 'estricto', 'bloqueo',
+  // Anatomy
+  'pecho', 'pectoral', 'pectorales', 'chest', 'pec', 'deck', 'espalda', 'dorsal', 'dorsales', 'lat', 'lats',
+  'trapecio', 'trapecios', 'traps', 'romboides', 'lumbar', 'lumbares', 'erectores', 'hombro', 'hombros',
+  'deltoide', 'deltoides', 'shoulder', 'shoulders', 'delt', 'delts', 'manguito', 'rotador', 'rotadores',
+  'biceps', 'braquial', 'braquiorradial', 'antebrazo', 'antebrazos', 'forearm', 'muneca', 'munecas',
+  'triceps', 'brazo', 'brazos', 'pierna', 'piernas', 'cuadriceps', 'quad', 'quads', 'femoral', 'femorales',
+  'isquio', 'isquios', 'isquiotibiales', 'isquiosurales', 'hamstring', 'hamstrings', 'gluteo', 'gluteos', 'glutes',
+  'cadera', 'hips', 'gemelo', 'gemelos', 'pantorrilla', 'pantorrillas', 'calf', 'calves', 'soleo', 'tibial',
+  'tobillo', 'rodilla', 'codo', 'cuello', 'abdomen', 'abdominal', 'abdominales', 'abs', 'core', 'oblicuo', 'oblicuos',
+  'serrato', 'transverso', 'cuerpo', 'body', 'upper', 'lower', 'tren', 'superior', 'inferior',
+  'cabeza', 'larga', 'corta', 'medial', 'anterior', 'clavicular', 'esternal', 'costal', 'mayor', 'menor', 'medio', 'media',
+  // Equipment & Modifiers
+  'barra', 'barbell', 'mancuerna', 'mancuernas', 'manc', 'dumbbell', 'dumbbells', 'polea', 'poleas', 'cable', 'cables',
+  'maquina', 'maquinas', 'machine', 'multipower', 'smith', 'kettlebell', 'kettlebells', 'pesa', 'rusa',
+  'banda', 'bandas', 'elastica', 'goma', 'disco', 'discos', 'plate', 'banco', 'bancos', 'bench',
+  'plano', 'plana', 'inclinado', 'inclinada', 'declinado', 'declinada', 'alta', 'alto', 'baja', 'bajo',
+  'soga', 'ez', 'recta', 'hexagonal', 'trap', 'bar', 'suiza', 'swiss', 'cambered', 'safety', 'ssb',
+  'paralelas', 'anillas', 'rings', 'trx', 'suspension', 'cajon', 'bosu', 'fitball', 'rueda', 'abwheel', 'rodillo',
+  'saco', 'sandbag', 'chaleco', 'lastre', 'lastrado', 'lastrada', 'cinturon', 'cadena', 'cadenas',
+  'agarre', 'grip', 'prono', 'pronado', 'supino', 'supinado', 'neutro', 'mixto', 'ancho', 'abierto', 'cerrado', 'estrecho',
+  'gironda', 'triangulo', 'angulo', 'unilateral', 'bilateral', 'alterno', 'alternado', 'simultaneo',
+  'sentado', 'sentada', 'parado', 'pie', 'acostado', 'acostada', 'tumbado', 'tumbada', 'arrodillado', 'colgado',
+  'apoyo', 'libre', 'guiado', 'guiada', 'asistido', 'asistida', 'convergente', 'divergente', 'isolateral',
+  'sillon', 'camilla', 'contractora', 'multipresa', 'concept2', 'erg', 'stairmaster', 'remo',
+  'mano', 'manos', 'lado', 'lados', 'grados', 'zona', 'hiit', 'tabata', 'emom', 'amrap', 'vo2', 'max', 'umbral', 'ritmo',
+  'enfasis', 'foco', 'fuerza', 'hipertrofia', 'calistenia', 'hyrox', 'cardio',
+]);
+
+let cachedFitnessVocabulary: Set<string> | null = null;
+
+function getValidFitnessVocabulary(): Set<string> {
+  if (cachedFitnessVocabulary) return cachedFitnessVocabulary;
+  const vocab = new Set<string>(BASE_FITNESS_LEXICON);
+  for (const item of BUILTIN_EXERCISES) {
+    const sources = [item.name, item.muscleGroup, ...(item.aliases || []), item.biomechanicalCue || ''];
+    for (const src of sources) {
+      const words = normalizeSearchText(src).split(/[^a-z0-9]+/).filter(Boolean);
+      for (const w of words) {
+        vocab.add(w);
+      }
+    }
+  }
+  cachedFitnessVocabulary = vocab;
+  return vocab;
+}
+
+/**
+ * Analyzes an exercise string entered by the user to detect out-of-context words
+ * (e.g. conversational notes, schedule days, random typos, or leaked sections)
+ * so the UI can ask the user if those words were intentional ("con querer") or an error.
+ */
+export function detectOutOfContextExerciseWords(rawInput: string): OutOfContextWordAnalysis {
+  const trimmed = rawInput.trim();
+  if (!trimmed) {
+    return {
+      hasSuspiciousWords: false,
+      suspiciousWords: [],
+      suggestedCleanName: '',
+      originalInput: rawInput,
+      explanation: '',
+    };
+  }
+
+  const vocab = getValidFitnessVocabulary();
+  const tokens = extractStructuredExerciseTokens(trimmed);
+
+  // Strip known performance metrics (sets x reps, weights, RIR, rest) from raw text before checking words
+  let workingLine = trimmed
+    .replace(/\b(\d{1,3}(?:[.,]\d+)?)\s*(kg|kilos?|lbs?|libras?)\b/gi, ' ')
+    .replace(/\b([1-9]|10)\s*[x×X*]\s*(\d{1,3})(?:\s*[-/a]\s*(\d{1,3}))?\s*(?:reps?|repeticiones|seg(?:undos)?|s|min(?:utos)?)?\b/gi, ' ')
+    .replace(/\bRIR\s*[:=]?\s*[0-4]\+?/gi, ' ')
+    .replace(/\b(?:RPE|@)\s*[:=]?\s*(?:10|[6-9](?:[.,]5)?)\b/gi, ' ');
+
+  if (tokens.leakedNextSection) {
+    workingLine = workingLine.replace(tokens.leakedNextSection, ' ');
+  }
+
+  const rawWords = workingLine
+    .replace(/[(),.;:[\]{}"!?¡¿*•]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const suspiciousWords: string[] = [];
+  const keptWords: string[] = [];
+
+  for (const word of rawWords) {
+    const cleanWord = word.replace(/^[/\-–—]+|[/\-–—]+$/g, '');
+    if (!cleanWord) continue;
+
+    const norm = normalizeSearchText(cleanWord);
+    if (!norm) continue;
+
+    // Valid numbers (e.g. "30°", "45°", "1", "2", "1000m", "500m", "100m")
+    if (/^\d+(?:°|m|km|cm)?$/i.test(cleanWord)) {
+      keptWords.push(cleanWord);
+      continue;
+    }
+
+    // Check explicit out-of-context words first
+    if (EXPLICIT_OUT_OF_CONTEXT_WORDS.has(norm)) {
+      suspiciousWords.push(cleanWord);
+      continue;
+    }
+
+    // Check direct membership in fitness vocabulary
+    if (vocab.has(norm)) {
+      keptWords.push(cleanWord);
+      continue;
+    }
+
+    // Check singular/plural or common Spanish gender/diminutive stem match (at least 4 chars)
+    const stem = norm.replace(/(?:es|s|ado|ada|ados|adas|ito|ita)$/, '');
+    let matchedByStem = false;
+    if (stem.length >= 4) {
+      for (const validWord of Array.from(vocab)) {
+        if (validWord.length >= 4 && (validWord.startsWith(stem) || stem.startsWith(validWord))) {
+          matchedByStem = true;
+          break;
+        }
+      }
+    }
+
+    if (matchedByStem) {
+      keptWords.push(cleanWord);
+    } else {
+      suspiciousWords.push(cleanWord);
+    }
+  }
+
+  if (tokens.leakedNextSection) {
+    suspiciousWords.push(tokens.leakedNextSection);
+  }
+
+  const hasSuspiciousWords = suspiciousWords.length > 0;
+  const rawSuggested = keptWords.join(' ').trim();
+  const suggestedCleanName = sanitizeExerciseName(rawSuggested || tokens.cleanName || trimmed);
+
+  const quotedSuspicious = suspiciousWords.map((w) => `"${w}"`).join(', ');
+  const explanation = hasSuspiciousWords
+    ? `KAIROS detectó ${suspiciousWords.length === 1 ? 'la palabra' : 'las palabras'} ${quotedSuspicious} fuera del contexto biomecánico habitual de un ejercicio.`
+    : 'Nombre de ejercicio biomecánicamente válido.';
+
+  return {
+    hasSuspiciousWords,
+    suspiciousWords,
+    suggestedCleanName: suggestedCleanName || formatCapitalizedExercise(trimmed),
+    originalInput: trimmed,
+    explanation,
+  };
+}
+
+/**
+ * Synthesizes a complete, scientific biomechanical and physiological profile (ExerciseDeepProfile)
+ * for any canonical or user-created exercise.
+ */
+export function synthesizeExerciseDeepProfile(
+  rawName: string,
+  targetMode?: TrainingMode,
+  catalogId?: string
+): ExerciseDeepProfile {
+  const clean = sanitizeExerciseName(rawName) || rawName.trim();
+  const norm = normalizeSearchText(clean);
+
+  const catalogItem =
+    (catalogId ? BUILTIN_EXERCISES.find((b) => b.id === catalogId) : undefined) ||
+    BUILTIN_EXERCISES.find(
+      (b) =>
+        normalizeSearchText(b.name) === norm ||
+        b.aliases?.some((a) => normalizeSearchText(a) === norm)
+    );
+
+  if (catalogItem?.deepProfile) {
+    return catalogItem.deepProfile;
+  }
+
+  const mode: TrainingMode = catalogItem?.mode || targetMode || 'hypertrophy';
+
+  // 1. Determine Equipment Type
+  let equipmentType: ExerciseDeepProfile['equipmentType'] = 'Barra';
+  if (/\b(?:poleas?|cables?|cruces?|bayesian[oa]?|katana|face\s*pull|jal[oó]n|pushdown)\b/i.test(clean)) {
+    equipmentType = 'Polea / Cable';
+  } else if (/\b(?:multipower|smith)\b/i.test(clean)) {
+    equipmentType = 'Multipower / Smith';
+  } else if (/\b(?:m[aá]quinas?|pec\s*deck|contractora|prensa|hack|hacka|sill[oó]n|camilla|p[eé]ndulo|abductor|aductor)\b/i.test(clean)) {
+    equipmentType = 'Máquina';
+  } else if (/\b(?:mancuernas?|c\/manc|arnold|martillo|hammer|concentrado|p[aá]jaros|serrucho|goblet|zottman)\b/i.test(clean)) {
+    equipmentType = 'Mancuernas';
+  } else if (/\b(?:kettlebells?|pesa\s*rusa|saco|sandbag|trineo|sled|wall\s*balls?|farmers|granjero)\b/i.test(clean)) {
+    equipmentType = 'Kettlebell / Libre';
+  } else if (/\b(?:cuerda|comba|running|correr|sprint|nataci[oó]n|ciclismo|bici|skierg|erg[oó]metro|stairmaster|assault)\b/i.test(clean)) {
+    equipmentType = 'Ergo / Cardio';
+  } else if (
+    mode === 'calisthenics' ||
+    /\b(?:dominadas?|fondos?|flexiones|push\s*ups?|front\s*lever|back\s*lever|planche|handstand|pino|muscle\s*up|pistol|l-sit|dragon\s*flag|plancha|plank|n[oó]rdic[oa]?|burpees?)\b/i.test(clean)
+  ) {
+    equipmentType = 'Peso Corporal';
+  }
+
+  // 2. Default Biomechanical Variables
+  let primaryMuscles: string[] = ['Grupo Muscular Principal'];
+  let secondaryMuscles: string[] = ['Sinergistas Articulares'];
+  let stabilizerMuscles: string[] = ['Core Antirrotacional', 'Estabilizadores Escapulares'];
+  let movementPattern: MovementPatternType = 'Aislamiento';
+  let mechanicType: ExerciseDeepProfile['mechanicType'] = 'Compuesto';
+  let resistanceProfile: ExerciseDeepProfile['resistanceProfile'] = 'Rango Medio (Mid-Range)';
+  let sfrScore = 8;
+  let cnsFatigueIndex = 6;
+  let localFatigueIndex = 7;
+  let jointStress: ExerciseDeepProfile['jointStress'] = {
+    level: 'Moderado',
+    joints: ['Articulación Principal'],
+  };
+  let recoveryHours: ExerciseDeepProfile['recoveryHours'] = 48;
+  let optimalRepRange = '8–12 reps';
+  let biomechanicalCue =
+    catalogItem?.biomechanicalCue ||
+    'Controla la fase excéntrica durante 2–3 segundos manteniendo estabilidad axial y máxima tensión en el músculo objetivo.';
+  let fatigueCoefficient = 1.0;
+
+  // 3. Deep Anatomical & Physiological Rules Engine
+  if (/\b(?:aperturas?|pec\s*deck|cruces?|crossover|fly)\b/i.test(clean)) {
+    // Pectoral Isolation
+    primaryMuscles = ['Pectoral Mayor (Porción Esternocostal y Clavicular)'];
+    secondaryMuscles = ['Deltoides Anterior', 'Bíceps Braquial (Cabeza Corta - Fijador)'];
+    stabilizerMuscles = ['Manguito Rotador', 'Serrato Anterior', 'Trapecio Inferior'];
+    movementPattern = 'Aislamiento';
+    mechanicType = 'Aislamiento';
+    resistanceProfile =
+      equipmentType === 'Polea / Cable' || equipmentType === 'Máquina'
+        ? 'Constante / Lineal'
+        : 'Pico en Estiramiento (Lengthened)';
+    sfrScore = 9;
+    cnsFatigueIndex = 3;
+    localFatigueIndex = 8;
+    jointStress = { level: 'Bajo', joints: ['Hombro (Glenohumeral)'] };
+    recoveryHours = 36;
+    optimalRepRange = '10–15 reps';
+    fatigueCoefficient = 0.85;
+  } else if (/\b(?:banca|press\s*plano|press\s*inclinado|press\s*declinado|press\s*de\s*pecho|flexiones|fondos?\s*en\s*paralelas|guillotina)\b/i.test(clean)) {
+    // Horizontal Push / Chest Compound
+    const isIncline = /\b(?:inclinad[oa]|clavicular|superior)\b/i.test(clean);
+    const isDeclineOrDips = /\b(?:declinad[oa]|fondos?|inferior)\b/i.test(clean);
+    primaryMuscles = isIncline
+      ? ['Pectoral Mayor (Haz Clavicular / Superior)']
+      : isDeclineOrDips
+      ? ['Pectoral Mayor (Haz Costal / Inferior)', 'Tríceps Braquial']
+      : ['Pectoral Mayor (Porción Esternocostal)'];
+    secondaryMuscles = ['Deltoides Anterior', 'Tríceps Braquial (Cabeza Lateral y Medial)'];
+    stabilizerMuscles = ['Manguito Rotador (Infraespinoso)', 'Serrato Anterior', 'Dorsal Ancho (Retracción Escapular)'];
+    movementPattern = 'Empuje Horizontal';
+    mechanicType = 'Compuesto';
+    resistanceProfile = 'Pico en Estiramiento (Lengthened)';
+    const isMachineOrSmith = equipmentType === 'Máquina' || equipmentType === 'Multipower / Smith';
+    sfrScore = isMachineOrSmith ? 9 : 8;
+    cnsFatigueIndex = isMachineOrSmith ? 5 : 7;
+    localFatigueIndex = 8;
+    jointStress = {
+      level: isDeclineOrDips || equipmentType === 'Barra' ? 'Moderado' : 'Bajo',
+      joints: ['Hombro (Glenohumeral y Acromioclavicular)', 'Codo'],
+    };
+    recoveryHours = 48;
+    optimalRepRange = mode === 'strength' ? '3–6 reps' : '6–10 reps';
+    fatigueCoefficient = isMachineOrSmith ? 1.15 : 1.35;
+  } else if (/\b(?:pull\s*over|pullover)\b/i.test(clean)) {
+    // Pullover
+    primaryMuscles = ['Dorsal Ancho (Fibras Externas en Estiramiento)', 'Redondo Mayor'];
+    secondaryMuscles = ['Tríceps Braquial (Cabeza Larga)', 'Pectoral Mayor (Porción Esternal)'];
+    stabilizerMuscles = ['Serrato Anterior', 'Recto Abdominal', 'Manguito Rotador'];
+    movementPattern = 'Tracción Vertical';
+    mechanicType = 'Aislamiento';
+    resistanceProfile = equipmentType === 'Polea / Cable' ? 'Constante / Lineal' : 'Pico en Estiramiento (Lengthened)';
+    sfrScore = 9;
+    cnsFatigueIndex = 3;
+    localFatigueIndex = 7;
+    jointStress = { level: 'Bajo', joints: ['Hombro (Glenohumeral)'] };
+    recoveryHours = 36;
+    optimalRepRange = '10–15 reps';
+    fatigueCoefficient = 0.85;
+  } else if (/\b(?:jal[oó]n|dominadas?|pull\s*ups?|chin\s*ups?|pulldown|muscle\s*up)\b/i.test(clean)) {
+    // Vertical Pull
+    const isNeutralOrSupine = /\b(?:neutro|supin[oa]|cerrado|chin)\b/i.test(clean);
+    primaryMuscles = isNeutralOrSupine
+      ? ['Dorsal Ancho (Fibras Iliocostales / Inferiores)', 'Redondo Mayor']
+      : ['Dorsal Ancho (Anchura Torácica)', 'Redondo Mayor', 'Trapecio Inferior'];
+    secondaryMuscles = ['Bíceps Braquial', 'Braquial Anterior', 'Braquiorradial', 'Deltoides Posterior'];
+    stabilizerMuscles = ['Cabeza Larga del Tríceps', 'Romboides', 'Core Antihiperextensión'];
+    movementPattern = 'Tracción Vertical';
+    mechanicType = 'Compuesto';
+    resistanceProfile = 'Pico en Contracción (Shortened)';
+    sfrScore = 9;
+    cnsFatigueIndex = equipmentType === 'Peso Corporal' ? 7 : 5;
+    localFatigueIndex = 8;
+    jointStress = { level: 'Bajo', joints: ['Hombro', 'Codo'] };
+    recoveryHours = 48;
+    optimalRepRange = '6–12 reps';
+    fatigueCoefficient = equipmentType === 'Peso Corporal' ? 1.25 : 1.1;
+  } else if (/\b(?:remo|row|t-bar|pendlay|seal|meadows|serrucho)\b/i.test(clean) && mode !== 'cardio' && mode !== 'hyrox') {
+    // Horizontal Pull / Row
+    const isChestSupportedOrCable =
+      /\b(?:pecho\s*apoyado|seal|m[aá]quina|polea|gironda|sentado)\b/i.test(clean);
+    primaryMuscles = ['Dorsal Ancho', 'Trapecio Medio e Inferior', 'Romboides Mayor y Menor'];
+    secondaryMuscles = ['Deltoides Posterior', 'Bíceps Braquial', 'Braquiorradial'];
+    stabilizerMuscles = isChestSupportedOrCable
+      ? ['Manguito Rotador', 'Core Antirrotacional']
+      : ['Erectores Espinales Lumbares', 'Isquiosurales (Isométrico)', 'Transverso Abdominal'];
+    movementPattern = 'Tracción Horizontal';
+    mechanicType = 'Compuesto';
+    resistanceProfile = 'Pico en Contracción (Shortened)';
+    sfrScore = isChestSupportedOrCable ? 9 : 7;
+    cnsFatigueIndex = isChestSupportedOrCable ? 5 : 8;
+    localFatigueIndex = 8;
+    jointStress = {
+      level: isChestSupportedOrCable ? 'Bajo' : 'Moderado',
+      joints: isChestSupportedOrCable ? ['Hombro', 'Codo'] : ['Columna Lumbar', 'Hombro', 'Codo'],
+    };
+    recoveryHours = isChestSupportedOrCable ? 36 : 48;
+    optimalRepRange = '8–12 reps';
+    fatigueCoefficient = isChestSupportedOrCable ? 1.1 : 1.4;
+  } else if (/\b(?:encogimientos?|shrugs?)\b/i.test(clean)) {
+    // Traps
+    primaryMuscles = ['Trapecio Superior (Fibras Descendentes)'];
+    secondaryMuscles = ['Elevador de la Escápula', 'Trapecio Medio'];
+    stabilizerMuscles = ['Flexores del Antebrazo (Agarre)', 'Core y Erectores Espinales'];
+    movementPattern = 'Aislamiento';
+    mechanicType = 'Aislamiento';
+    resistanceProfile = 'Pico en Contracción (Shortened)';
+    sfrScore = 8;
+    cnsFatigueIndex = 4;
+    localFatigueIndex = 7;
+    jointStress = { level: 'Bajo', joints: ['Acromioclavicular', 'Columna Cervical'] };
+    recoveryHours = 36;
+    optimalRepRange = '10–15 reps';
+    fatigueCoefficient = 0.8;
+  } else if (/\b(?:p[aá]jaros|face\s*pull|deltoide\s*posterior|cruces?\s*inversos?)\b/i.test(clean)) {
+    // Rear Delts
+    primaryMuscles = ['Deltoides Posterior', 'Infraespinoso y Redondo Menor'];
+    secondaryMuscles = ['Trapecio Medio e Inferior', 'Romboides'];
+    stabilizerMuscles = ['Erectores Torácicos', 'Core'];
+    movementPattern = 'Tracción Horizontal';
+    mechanicType = 'Aislamiento';
+    resistanceProfile = 'Pico en Contracción (Shortened)';
+    sfrScore = 9;
+    cnsFatigueIndex = 2;
+    localFatigueIndex = 7;
+    jointStress = { level: 'Bajo', joints: ['Hombro (Glenohumeral)'] };
+    recoveryHours = 24;
+    optimalRepRange = '12–20 reps';
+    fatigueCoefficient = 0.7;
+  } else if (/\b(?:elevaciones?\s*laterales|laterales|vuelos?\s*laterales|elevaciones?\s*frontales)\b/i.test(clean)) {
+    // Lateral / Front Delt Isolation
+    const isFront = /\bfrontal/i.test(clean);
+    primaryMuscles = isFront ? ['Deltoides Anterior'] : ['Deltoides Lateral (Porción Acromial Media)'];
+    secondaryMuscles = ['Supraespinoso', 'Trapecio Superior', 'Serrato Anterior'];
+    stabilizerMuscles = ['Manguito Rotador', 'Extensores de Muñeca', 'Core'];
+    movementPattern = 'Aislamiento';
+    mechanicType = 'Aislamiento';
+    resistanceProfile =
+      equipmentType === 'Polea / Cable'
+        ? 'Pico en Estiramiento (Lengthened)'
+        : 'Pico en Contracción (Shortened)';
+    sfrScore = equipmentType === 'Polea / Cable' || equipmentType === 'Máquina' ? 10 : 9;
+    cnsFatigueIndex = 2;
+    localFatigueIndex = 8;
+    jointStress = { level: 'Bajo', joints: ['Hombro (Subacromial)'] };
+    recoveryHours = 24;
+    optimalRepRange = '12–20 reps';
+    fatigueCoefficient = 0.75;
+  } else if (/\b(?:press\s*militar|press\s*de\s*hombros?|arnold|overhead|ohp|hspu|flexiones\s*en\s*pino)\b/i.test(clean)) {
+    // Vertical Push
+    primaryMuscles = ['Deltoides Anterior', 'Deltoides Lateral'];
+    secondaryMuscles = ['Tríceps Braquial', 'Pectoral Mayor (Haz Clavicular)', 'Serrato Anterior'];
+    stabilizerMuscles = ['Trapecio Superior e Inferior', 'Manguito Rotador', 'Core y Erectores Espinales'];
+    movementPattern = 'Empuje Vertical';
+    mechanicType = 'Compuesto';
+    resistanceProfile = 'Pico en Estiramiento (Lengthened)';
+    sfrScore = 8;
+    cnsFatigueIndex = equipmentType === 'Barra' || equipmentType === 'Peso Corporal' ? 7 : 5;
+    localFatigueIndex = 8;
+    jointStress = { level: 'Moderado', joints: ['Hombro (Glenohumeral)', 'Codo', 'Columna Lumbar'] };
+    recoveryHours = 48;
+    optimalRepRange = mode === 'strength' ? '4–6 reps' : '6–10 reps';
+    fatigueCoefficient = 1.25;
+  } else if (/\b(?:curl)\b/i.test(clean) && !/\b(?:femoral|pierna|isquio|leg|nordic)\b/i.test(clean)) {
+    // Biceps Curls
+    const isLengthened = /\b(?:bayesian[oa]?|inclinad[oa])\b/i.test(clean);
+    const isShortened = /\b(?:predicador|scott|spider|ara[ñn]a|concentrado)\b/i.test(clean);
+    const isHammerOrReverse = /\b(?:martillo|hammer|inverso|zottman)\b/i.test(clean);
+
+    primaryMuscles = isHammerOrReverse
+      ? ['Braquiorradial', 'Braquial Anterior', 'Bíceps Braquial']
+      : isLengthened
+      ? ['Bíceps Braquial (Énfasis Cabeza Larga)']
+      : isShortened
+      ? ['Bíceps Braquial (Énfasis Cabeza Corta)', 'Braquial Anterior']
+      : ['Bíceps Braquial (Cabeza Larga y Corta)'];
+    secondaryMuscles = isHammerOrReverse
+      ? ['Extensores Radiales del Carpo', 'Pronador Redondo']
+      : ['Braquial Anterior', 'Braquiorradial'];
+    stabilizerMuscles = ['Deltoides Anterior (Fijador Humeral)', 'Flexores de Muñeca', 'Estabilizadores Escapulares'];
+    movementPattern = 'Aislamiento';
+    mechanicType = 'Aislamiento';
+    resistanceProfile = isLengthened
+      ? 'Pico en Estiramiento (Lengthened)'
+      : isShortened
+      ? 'Pico en Contracción (Shortened)'
+      : equipmentType === 'Polea / Cable'
+      ? 'Constante / Lineal'
+      : 'Rango Medio (Mid-Range)';
+    sfrScore = isLengthened || equipmentType === 'Polea / Cable' ? 10 : 9;
+    cnsFatigueIndex = 2;
+    localFatigueIndex = 8;
+    jointStress = { level: 'Bajo', joints: ['Codo (Humerocubital)', 'Muñeca'] };
+    recoveryHours = 24;
+    optimalRepRange = '8–15 reps';
+    fatigueCoefficient = 0.75;
+  } else if (/\b(?:tr[ií]ceps|franc[eé]s|rompecr[aá]neos|rompecabezas|katana|copa|pushdown|patada\s*de\s*tr[ií]ceps|jm\s*press|banca\s*agarre\s*cerrado)\b/i.test(clean)) {
+    // Triceps
+    const isOverheadOrLengthened = /\b(?:franc[eé]s|rompecr[aá]neos|rompecabezas|katana|copa|overhead|trasnuca)\b/i.test(clean);
+    const isCompoundTriceps = /\b(?:cerrado|jm\s*press)\b/i.test(clean);
+    primaryMuscles = isOverheadOrLengthened
+      ? ['Tríceps Braquial (Énfasis Cabeza Larga en Estiramiento)']
+      : ['Tríceps Braquial (Cabeza Lateral y Medial)'];
+    secondaryMuscles = isCompoundTriceps
+      ? ['Pectoral Mayor', 'Deltoides Anterior', 'Ancóneo']
+      : ['Tríceps Braquial (Cabeza Larga)', 'Ancóneo'];
+    stabilizerMuscles = ['Manguito Rotador', 'Dorsal Ancho (Estabilizador Humeral)', 'Core'];
+    movementPattern = isCompoundTriceps ? 'Empuje Horizontal' : 'Aislamiento';
+    mechanicType = isCompoundTriceps ? 'Compuesto' : 'Aislamiento';
+    resistanceProfile = isOverheadOrLengthened
+      ? 'Pico en Estiramiento (Lengthened)'
+      : 'Pico en Contracción (Shortened)';
+    sfrScore = 9;
+    cnsFatigueIndex = isCompoundTriceps ? 5 : 3;
+    localFatigueIndex = 8;
+    jointStress = {
+      level: /\b(?:franc[eé]s|rompecr[aá]neos|jm\s*press)\b/i.test(clean) ? 'Moderado' : 'Bajo',
+      joints: ['Codo (Tendón del Tríceps)'],
+    };
+    recoveryHours = isCompoundTriceps ? 36 : 24;
+    optimalRepRange = isCompoundTriceps ? '6–10 reps' : '10–15 reps';
+    fatigueCoefficient = isCompoundTriceps ? 1.05 : 0.8;
+  } else if (/\b(?:extensi[oó]n(?:es)?\s*de\s*cu[aá]driceps|sill[oó]n\s*de\s*cu[aá]driceps|sissy)\b/i.test(clean)) {
+    // Quad Isolation
+    primaryMuscles = ['Cuádriceps (Recto Femoral, Vasto Lateral, Medial e Intermedio)'];
+    secondaryMuscles = ['Tensor de la Fascia Lata'];
+    stabilizerMuscles = ['Core Abdominal', 'Isquiosurales (Co-contracción Articular)'];
+    movementPattern = 'Dominante de Rodilla';
+    mechanicType = 'Aislamiento';
+    resistanceProfile = /\bsissy\b/i.test(clean)
+      ? 'Pico en Estiramiento (Lengthened)'
+      : 'Pico en Contracción (Shortened)';
+    sfrScore = 9;
+    cnsFatigueIndex = 3;
+    localFatigueIndex = 9;
+    jointStress = { level: 'Moderado', joints: ['Rodilla (Patelofemoral)'] };
+    recoveryHours = 36;
+    optimalRepRange = '10–15 reps';
+    fatigueCoefficient = 0.9;
+  } else if (/\b(?:sentadilla|squat|prensa|hack|hacka|p[eé]ndulo|b[uú]lgara|zancadas?|estocadas?|lunge|pistol)\b/i.test(clean)) {
+    // Knee Dominant Compound
+    const isMachineLeg = /\b(?:prensa|hack|hacka|p[eé]ndulo|smith|multipower)\b/i.test(clean);
+    const isUnilateral = /\b(?:b[uú]lgara|zancadas?|estocadas?|lunge|pistol)\b/i.test(clean);
+    primaryMuscles = isUnilateral
+      ? ['Cuádriceps (Vasto Lateral y Medial)', 'Glúteo Mayor (En Estiramiento)']
+      : ['Cuádriceps (Vasto Lateral, Medial e Intermedio)', 'Glúteo Mayor'];
+    secondaryMuscles = ['Aductor Mayor', 'Erectores Espinales', 'Isquiosurales (Estabilización Dinámica)'];
+    stabilizerMuscles = isUnilateral
+      ? ['Glúteo Medio y Menor (Estabilidad Pélvica)', 'Core Antirrotacional', ' Estabilizadores de Tobillo']
+      : ['Transverso Abdominal y Oblicuos (Presión Intraabdominal)', 'Erectores Torácicos', 'Gastrocnemio / Sóleo'];
+    movementPattern = 'Dominante de Rodilla';
+    mechanicType = 'Compuesto';
+    resistanceProfile = 'Pico en Estiramiento (Lengthened)';
+    sfrScore = isMachineLeg ? 9 : 8;
+    cnsFatigueIndex = isMachineLeg ? 7 : 9;
+    localFatigueIndex = 9;
+    jointStress = {
+      level: equipmentType === 'Barra' ? 'Alto' : 'Moderado',
+      joints: ['Rodilla', 'Cadera', 'Columna Lumbar'],
+    };
+    recoveryHours = isMachineLeg ? 48 : 72;
+    optimalRepRange = mode === 'strength' ? '3–6 reps' : '6–12 reps';
+    fatigueCoefficient = isMachineLeg ? 1.45 : 1.75;
+  } else if (/\b(?:curl\s*femoral|camilla|leg\s*curl|n[oó]rdic[oa]?)\b/i.test(clean)) {
+    // Hamstring Knee Flexion
+    const isSeatedOrNordic = /\b(?:sentado|n[oó]rdic[oa]?)\b/i.test(clean);
+    primaryMuscles = ['Isquiosurales (Bíceps Femoral, Semitendinoso y Semimembranoso)'];
+    secondaryMuscles = ['Gastrocnemio (Gemelos)', 'Grácil y Sartorio'];
+    stabilizerMuscles = ['Core Abdominal y Glúteos (Control Pélvico)', 'Tibial Anterior'];
+    movementPattern = 'Dominante de Cadera';
+    mechanicType = 'Aislamiento';
+    resistanceProfile = isSeatedOrNordic
+      ? 'Pico en Estiramiento (Lengthened)'
+      : 'Pico en Contracción (Shortened)';
+    sfrScore = 9;
+    cnsFatigueIndex = /\bn[oó]rdic/i.test(clean) ? 6 : 3;
+    localFatigueIndex = 8;
+    jointStress = { level: 'Bajo', joints: ['Rodilla'] };
+    recoveryHours = 36;
+    optimalRepRange = '8–15 reps';
+    fatigueCoefficient = 0.9;
+  } else if (/\b(?:peso\s*muerto|rumano|rdl|deadlift|stiff|piernas\s*r[ií]gidas|buenos\s*d[ií]as|good\s*morning)\b/i.test(clean)) {
+    // Hip Hinge Compound
+    const isRdl = /\b(?:rumano|rdl|stiff|r[ií]gidas|buenos\s*d[ií]as|good\s*morning)\b/i.test(clean);
+    primaryMuscles = isRdl
+      ? ['Isquiosurales (Semitendinoso, Semimembranoso y Bíceps Femoral)', 'Glúteo Mayor']
+      : ['Glúteo Mayor', 'Isquiosurales', 'Erectores Espinales'];
+    secondaryMuscles = ['Aductor Mayor', 'Dorsal Ancho y Trapecio Medio', 'Cuádriceps (En Despegue)'];
+    stabilizerMuscles = ['Flexores del Antebrazo (Agarre)', 'Transverso Abdominal y Oblicuos', 'Multífidos Lumbares'];
+    movementPattern = 'Dominante de Cadera';
+    mechanicType = 'Compuesto';
+    resistanceProfile = 'Pico en Estiramiento (Lengthened)';
+    sfrScore = isRdl ? 8 : 6;
+    cnsFatigueIndex = isRdl ? 8 : 10;
+    localFatigueIndex = 9;
+    jointStress = {
+      level: 'Alto',
+      joints: ['Columna Lumbosacra', 'Cadera'],
+    };
+    recoveryHours = 72;
+    optimalRepRange = mode === 'strength' ? '2–5 reps' : '6–10 reps';
+    fatigueCoefficient = isRdl ? 1.65 : 2.0;
+  } else if (/\b(?:hip\s*thrust|puente\s*de\s*gl[uú]teo|glute\s*bridge|patada\s*de\s*gl[uú]teo|abducci[oó]n|abductor|kas)\b/i.test(clean)) {
+    // Glutes
+    const isIsolationGlute = /\b(?:patada|abducci[oó]n|abductor)\b/i.test(clean);
+    primaryMuscles = isIsolationGlute
+      ? ['Glúteo Medio y Menor', 'Glúteo Mayor (Fibras Superiores)']
+      : ['Glúteo Mayor (Máximo Reclutamiento en Acortamiento)'];
+    secondaryMuscles = isIsolationGlute
+      ? ['Tensor de la Fascia Lata']
+      : ['Isquiosurales', 'Aductor Mayor', 'Cuádriceps'];
+    stabilizerMuscles = ['Recto Abdominal y Oblicuos (Retroversión Pélvica)', 'Erectores Espinales'];
+    movementPattern = 'Dominante de Cadera';
+    mechanicType = isIsolationGlute ? 'Aislamiento' : 'Compuesto';
+    resistanceProfile = 'Pico en Contracción (Shortened)';
+    sfrScore = 9;
+    cnsFatigueIndex = isIsolationGlute ? 2 : 5;
+    localFatigueIndex = 8;
+    jointStress = { level: 'Bajo', joints: ['Cadera'] };
+    recoveryHours = isIsolationGlute ? 24 : 36;
+    optimalRepRange = isIsolationGlute ? '12–20 reps' : '8–12 reps';
+    fatigueCoefficient = isIsolationGlute ? 0.75 : 1.15;
+  } else if (/\b(?:gemelos?|pantorrillas?|talones|s[oó]leo|calf)\b/i.test(clean)) {
+    // Calves
+    const isSeated = /\b(?:sentado|s[oó]leo)\b/i.test(clean);
+    primaryMuscles = isSeated
+      ? ['Sóleo (Flexión Plantar con Rodilla Flexionada)']
+      : ['Gastrocnemio (Gemelo Medial y Lateral)'];
+    secondaryMuscles = isSeated ? ['Gastrocnemio'] : ['Sóleo'];
+    stabilizerMuscles = ['Tibial Posterior', 'Peroneo Largo y Corto'];
+    movementPattern = 'Aislamiento';
+    mechanicType = 'Aislamiento';
+    resistanceProfile = 'Pico en Estiramiento (Lengthened)';
+    sfrScore = 9;
+    cnsFatigueIndex = 2;
+    localFatigueIndex = 7;
+    jointStress = { level: 'Bajo', joints: ['Tobillo (Tendón de Aquiles)'] };
+    recoveryHours = 24;
+    optimalRepRange = '10–20 reps';
+    fatigueCoefficient = 0.65;
+  } else if (/\b(?:front\s*lever|back\s*lever|planche|handstand|pino|human\s*flag|dragon\s*flag|l-sit)\b/i.test(clean)) {
+    // Calisthenics Statics
+    primaryMuscles = ['Core Abdominal Profundo (Recto y Transverso)', 'Dorsal Ancho / Deltoides Anterior'];
+    secondaryMuscles = ['Serrato Anterior', 'Tríceps Braquial (Bloqueo Articular)', 'Glúteo Mayor y Psoas Ilíaco'];
+    stabilizerMuscles = ['Manguito Rotador', 'Flexores y Extensores de Muñeca', 'Romboides'];
+    movementPattern = 'Core';
+    mechanicType = 'Isométrico';
+    resistanceProfile = 'Constante / Lineal';
+    sfrScore = 8;
+    cnsFatigueIndex = 8;
+    localFatigueIndex = 8;
+    jointStress = { level: 'Alto', joints: ['Muñeca', 'Codo (Bíceps Distal)', 'Hombro'] };
+    recoveryHours = 48;
+    optimalRepRange = '8–20 seg isométricos';
+    fatigueCoefficient = 1.4;
+  } else if (/\b(?:crunch|abdomen|abdominal(?:es)?|plancha|plank|rueda|ab\s*wheel|elevaci[oó]n\s*de\s*piernas|pallof)\b/i.test(clean)) {
+    // Core & Abs
+    primaryMuscles = ['Recto Abdominal', 'Oblicuos Externos e Internos'];
+    secondaryMuscles = ['Transverso del Abdomen', 'Psoas Ilíaco / Flexores de Cadera'];
+    stabilizerMuscles = ['Serrato Anterior', 'Glúteo Mayor', 'Multífidos'];
+    movementPattern = 'Core';
+    mechanicType = /\b(?:plancha|plank|pallof)\b/i.test(clean) ? 'Isométrico' : 'Aislamiento';
+    resistanceProfile = 'Rango Medio (Mid-Range)';
+    sfrScore = 9;
+    cnsFatigueIndex = 2;
+    localFatigueIndex = 7;
+    jointStress = { level: 'Bajo', joints: ['Columna Lumbar'] };
+    recoveryHours = 24;
+    optimalRepRange = '12–20 reps / 45s';
+    fatigueCoefficient = 0.65;
+  } else if (
+    mode === 'hyrox' ||
+    mode === 'cardio' ||
+    /\b(?:skierg|sled|trineo|burpees?|wall\s*balls?|farmers|granjero|sandbag|cuerda|comba|running|correr|sprint|nataci[oó]n|ciclismo|bici|stairmaster)\b/i.test(clean)
+  ) {
+    // Hyrox & Cardio
+    const isHyroxStation =
+      mode === 'hyrox' || /\b(?:skierg|sled|trineo|burpees?|wall\s*balls?|farmers|granjero|sandbag)\b/i.test(clean);
+    primaryMuscles = isHyroxStation
+      ? ['Cadena Posterior y Cuádriceps', 'Sistema Cardiorrespiratorio (Umbral de Lactato)']
+      : ['Sistema Cardiorrespiratorio (Oxidativo / VO2 Máx)', 'Tren Inferior Cíclico (Cuádriceps, Isquios y Pantorrillas)'];
+    secondaryMuscles = isHyroxStation
+      ? ['Deltoides, Dorsal Ancho y Trapecio', 'Core y Flexores del Antebrazo']
+      : ['Glúteo Mayor y Medio', 'Core Estabilizador'];
+    stabilizerMuscles = ['Complejo Articular de Tobillo, Rodilla y Cadera', 'Core Antirrotacional'];
+    movementPattern = isHyroxStation ? 'Híbrido / Funcional' : 'Cardio';
+    mechanicType = 'Metabólico / Cíclico';
+    resistanceProfile = 'Constante / Lineal';
+    sfrScore = 8;
+    cnsFatigueIndex = isHyroxStation ? 7 : 5;
+    localFatigueIndex = isHyroxStation ? 8 : 6;
+    jointStress = {
+      level: /\b(?:running|correr|sprint|burpees?|sled)\b/i.test(clean) ? 'Moderado' : 'Bajo',
+      joints: ['Tobillo', 'Rodilla', 'Cadera'],
+    };
+    recoveryHours = isHyroxStation ? 48 : 24;
+    optimalRepRange = isHyroxStation ? 'bloques de distancia / tiempo' : 'ritmo continuo o intervalos';
+    fatigueCoefficient = isHyroxStation ? 1.3 : 0.9;
+  }
+
+  return {
+    primaryMuscles,
+    secondaryMuscles,
+    stabilizerMuscles,
+    movementPattern,
+    mechanicType,
+    resistanceProfile,
+    equipmentType,
+    sfrScore,
+    cnsFatigueIndex,
+    localFatigueIndex,
+    jointStress,
+    recoveryHours,
+    optimalRepRange,
+    biomechanicalCue,
+    fatigueCoefficient,
+    isAiResearched: false,
+  };
+}
 
 // Anatomical keyword inference for novel custom exercises
 const MUSCLE_KEYWORDS: {
@@ -340,11 +1027,13 @@ export function extractStructuredExerciseTokens(rawInput: string): StructuredExe
   }
 
   // 8. Clean residual punctuation while keeping equipment intact
-  const cleanName = line
+  const rawCleanName = line
     .replace(/\(\s*\)/g, ' ')
     .replace(/^[\s:\-–—•*.,/]+|[\s:\-–—•*.,/]+$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
+
+  const cleanName = sanitizeExerciseName(rawCleanName);
 
   return {
     cleanName,
@@ -381,6 +1070,7 @@ export function resolveExerciseIntelligently(
   const tokens = extractStructuredExerciseTokens(rawInput);
   const clean = tokens.cleanName || rawInput.trim();
   const normClean = normalizeSearchText(clean);
+  const outOfContextAnalysis = detectOutOfContextExerciseWords(rawInput);
 
   // 1. Direct and Alias search across modes
   const allModes: TrainingMode[] = targetMode
@@ -413,6 +1103,8 @@ export function resolveExerciseIntelligently(
     const item = bestMatch.item;
     const hasConflict = hasConflictingEquipment(clean, item.name);
     const finalCanonicalName = hasConflict ? formatCapitalizedExercise(clean) : item.name;
+    const deepProfile =
+      item.deepProfile || synthesizeExerciseDeepProfile(finalCanonicalName, item.mode, item.id);
 
     return {
       rawInput,
@@ -425,7 +1117,10 @@ export function resolveExerciseIntelligently(
       mode: item.mode,
       defaultRestSeconds: item.defaultRestSeconds,
       matchedAlias: bestMatch.matchedAlias,
-      biomechanicalCue: item.biomechanicalCue,
+      biomechanicalCue: item.biomechanicalCue || deepProfile.biomechanicalCue,
+      movementPattern: deepProfile.movementPattern,
+      deepProfile,
+      outOfContextAnalysis,
       targetWeightKg: tokens.targetWeightKg,
       extractedSets: tokens.sets,
       extractedReps: tokens.repsNum,
@@ -449,22 +1144,28 @@ export function resolveExerciseIntelligently(
       if (hits.length > 0 && hits[0].score >= 86) {
         const item = hits[0].item;
         const formattedUserClean = formatCapitalizedExercise(clean);
+        const finalName = hasConflictingEquipment(clean, item.name)
+          ? formattedUserClean
+          : item.name;
+        const deepProfile =
+          item.deepProfile || synthesizeExerciseDeepProfile(finalName, item.mode, item.id);
 
         return {
           rawInput,
           cleanName: clean,
           canonicalCatalogId: item.id,
           // Preserve user's equipment specification in canonical name if it differs
-          canonicalName: hasConflictingEquipment(clean, item.name)
-            ? formattedUserClean
-            : item.name,
+          canonicalName: finalName,
           isCanonicalMatch: true,
           confidence: Math.min(95, hits[0].score),
           muscleGroup: item.muscleGroup,
           mode: item.mode,
           defaultRestSeconds: item.defaultRestSeconds,
           matchedAlias: hits[0].matchedAlias || strippedCore,
-          biomechanicalCue: item.biomechanicalCue,
+          biomechanicalCue: item.biomechanicalCue || deepProfile.biomechanicalCue,
+          movementPattern: deepProfile.movementPattern,
+          deepProfile,
+          outOfContextAnalysis,
           targetWeightKg: tokens.targetWeightKg,
           extractedSets: tokens.sets,
           extractedReps: tokens.repsNum,
@@ -480,20 +1181,27 @@ export function resolveExerciseIntelligently(
   if (bestMatch && bestMatch.score >= 75) {
     const item = bestMatch.item;
     const formattedUserClean = formatCapitalizedExercise(clean);
+    const finalName = hasConflictingEquipment(clean, item.name)
+      ? formattedUserClean
+      : item.name;
+    const deepProfile =
+      item.deepProfile || synthesizeExerciseDeepProfile(finalName, item.mode, item.id);
+
     return {
       rawInput,
       cleanName: clean,
       canonicalCatalogId: item.id,
-      canonicalName: hasConflictingEquipment(clean, item.name)
-        ? formattedUserClean
-        : item.name,
+      canonicalName: finalName,
       isCanonicalMatch: false,
       confidence: bestMatch.score,
       muscleGroup: item.muscleGroup,
       mode: item.mode,
       defaultRestSeconds: item.defaultRestSeconds,
       matchedAlias: bestMatch.matchedAlias,
-      biomechanicalCue: item.biomechanicalCue,
+      biomechanicalCue: item.biomechanicalCue || deepProfile.biomechanicalCue,
+      movementPattern: deepProfile.movementPattern,
+      deepProfile,
+      outOfContextAnalysis,
       targetWeightKg: tokens.targetWeightKg,
       extractedSets: tokens.sets,
       extractedReps: tokens.repsNum,
@@ -531,6 +1239,7 @@ export function resolveExerciseIntelligently(
   const cleanSlug = normClean.replace(/[^a-z0-9]+/g, '_').slice(0, 32);
   const customId = `custom_cx_${cleanSlug || Math.random().toString(36).slice(2, 8)}`;
   const displayName = formatCapitalizedExercise(clean);
+  const deepProfile = synthesizeExerciseDeepProfile(displayName || clean, inferredMode, customId);
 
   return {
     rawInput,
@@ -539,10 +1248,16 @@ export function resolveExerciseIntelligently(
     canonicalName: displayName || clean,
     isCanonicalMatch: false,
     confidence: 50,
-    muscleGroup: inferredMuscle,
+    muscleGroup:
+      inferredMuscle !== 'Músculo Principal'
+        ? inferredMuscle
+        : deepProfile.primaryMuscles[0]?.split('(')[0]?.trim() || inferredMuscle,
     mode: inferredMode,
     defaultRestSeconds: inferredMode === 'strength' ? 150 : inferredMode === 'cardio' ? 45 : 90,
-    movementPattern: inferredPattern,
+    biomechanicalCue: deepProfile.biomechanicalCue,
+    movementPattern: inferredPattern || deepProfile.movementPattern,
+    deepProfile,
+    outOfContextAnalysis,
     targetWeightKg: tokens.targetWeightKg,
     extractedSets: tokens.sets,
     extractedReps: tokens.repsNum,
@@ -552,7 +1267,7 @@ export function resolveExerciseIntelligently(
   };
 }
 
-function formatCapitalizedExercise(str: string): string {
+export function formatCapitalizedExercise(str: string): string {
   const lowercaseWords = new Set(['con', 'en', 'de', 'del', 'para', 'y', 'o', 'a', 'al']);
   return str
     .split(' ')
@@ -565,6 +1280,43 @@ function formatCapitalizedExercise(str: string): string {
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     })
     .join(' ');
+}
+
+/**
+ * Strips noisy parenthetical suffixes (e.g. "(Gironda)", "(Énfasis Pectoral)"),
+ * slash synonyms (e.g. "/ Cristos", "/ Cerrado"), and harmonizes with the catalog.
+ */
+export function sanitizeExerciseName(rawName: string): string {
+  if (!rawName) return '';
+  let str = rawName
+    // 1. Remove parenthetical descriptions, notes, and synonyms
+    .replace(
+      /\s*\((?:gironda|énfasis\s+[^)]+|cristos?|rompecr[aá]neos?|rompecabezas?[^)]*|copa|serrucho|rdl|gemelos?|s[oó]leo[^)]*|chin-?ups?|dips?|rto|flexiones\s+en\s+pino|sentadilla\s+a\s+1\s+pierna|isom[eé]trico|pino[^)]*|human\s*flag|carrera[^)]*|empuje\s+de\s+trineo|arrastre\s+de\s+trineo|remo\s+concept2|paseo\s+del\s+granjero|zancadas\s+con\s+saco|100\s*lanzamientos|dobles|velocidad[^)]*|boxer[^)]*|tabata[^)]*|pausa[^)]*|sentado|smith|30°|barra\s+o\s+cuerda|mancuernas?\s+o\s+cuerda|recta\s+o\s+ez|inclinado\s*\/\s*pendlay|t-bar\s*\/\s*m[aá]quina|low\s*bar\s*squat|high\s*bar\s*squat|ohp\s*fuerza|1-5rm|bloqueo\s*pesado|vo2\s*max|ritmo\s*de\s*umbral|cuerda|dobles\s*\/\s*double\s*unders)\)/gi,
+      ''
+    )
+    // 2. Remove trailing / or standalone slash synonyms
+    .replace(
+      /\s*\/\s*(?:cristos?|deltoide\s+posterior|extensi[oó]n\s+katana|fondos\s+en\s+m[aá]quina|cerrado|pendlay|m[aá]quina|cuerda|smith|estocadas|empuje\s+de\s+cadera|costurera|v-sit|parada\s+de\s+manos|human\s+flag|braza|ciclismo\s+zona\s*2|assault\s+bike|stairmaster|dobles)\b/gi,
+      ''
+    )
+    // 3. Remove standalone parentheticals that are empty
+    .replace(/\(\s*\)/g, ' ')
+    // 4. Clean extra spaces & punctuation
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // If matches a canonical catalog exercise cleanly, return official catalog name
+  const cleanNorm = normalizeSearchText(str);
+  const canonical = BUILTIN_EXERCISES.find(
+    (b) =>
+      normalizeSearchText(b.name) === cleanNorm ||
+      b.aliases?.some((a) => normalizeSearchText(a) === cleanNorm)
+  );
+  if (canonical) {
+    return canonical.name;
+  }
+
+  return formatCapitalizedExercise(str);
 }
 
 export interface RoutineExerciseCleanupResult {
@@ -582,7 +1334,7 @@ export interface RoutineExerciseCleanupResult {
 /**
  * Batch cleaner for all exercises in a routine.
  * Strips noise, embedded loads ("45kg", "120 kg"), sets notes (": 2. Espalda"),
- * and sets/reps artifacts from exercise names, placing them into structured fields.
+ * parenthetical/slash noise, and sets/reps artifacts from exercise names.
  */
 export function cleanAllRoutineExercises(days: RoutineDayPlan[]): RoutineExerciseCleanupResult {
   const changes: RoutineExerciseCleanupResult['changes'] = [];
@@ -591,7 +1343,22 @@ export function cleanAllRoutineExercises(days: RoutineDayPlan[]): RoutineExercis
     ...day,
     exercises: day.exercises.map((ex) => {
       const tokens = extractStructuredExerciseTokens(ex.name);
-      const cleanName = tokens.cleanName || ex.name;
+      let cleanName = sanitizeExerciseName(tokens.cleanName || ex.name);
+      let catalogId = ex.catalogId;
+
+      if (catalogId) {
+        const cat = BUILTIN_EXERCISES.find((b) => b.id === catalogId);
+        if (cat) {
+          cleanName = cat.name;
+        }
+      } else {
+        const resolved = resolveExerciseIntelligently(cleanName, ex.mode);
+        if (resolved.isCanonicalMatch) {
+          cleanName = resolved.canonicalName;
+          catalogId = resolved.canonicalCatalogId;
+        }
+      }
+
       const isNameDifferent = cleanName !== ex.name;
       const hasExtractedWeight =
         tokens.targetWeightKg !== undefined && (!ex.targetWeightKg || ex.targetWeightKg <= 0);
@@ -613,6 +1380,7 @@ export function cleanAllRoutineExercises(days: RoutineDayPlan[]): RoutineExercis
         return {
           ...ex,
           name: cleanName,
+          catalogId: catalogId || ex.catalogId,
           targetWeightKg: hasExtractedWeight ? tokens.targetWeightKg : ex.targetWeightKg,
           sets: hasExtractedSets ? tokens.sets! : ex.sets,
           repsNum: hasExtractedReps ? tokens.repsNum! : ex.repsNum,
@@ -625,4 +1393,90 @@ export function cleanAllRoutineExercises(days: RoutineDayPlan[]): RoutineExercis
   }));
 
   return { cleanedDays, changes };
+}
+
+/**
+ * Cleans historical workout sessions by sanitizing exercise names across all blocks,
+ * stripping noise words, and binding canonical catalog IDs so the AI recognizes them
+ * for progressive overload tracking and analytics.
+ */
+export function cleanWorkoutSessionExercises(session: any): { session: any; modified: boolean } {
+  let modified = false;
+  const blocks = (session.blocks || []).map((block: any) => ({
+    ...block,
+    exercises: (block.exercises || []).map((ex: any) => {
+      let cleanName = sanitizeExerciseName(ex.name);
+      let catalogId = ex.catalogId;
+
+      if (catalogId) {
+        const cat = BUILTIN_EXERCISES.find((b) => b.id === catalogId);
+        if (cat) {
+          cleanName = cat.name;
+        }
+      } else {
+        const resolved = resolveExerciseIntelligently(cleanName, ex.mode);
+        if (resolved.isCanonicalMatch) {
+          cleanName = resolved.canonicalName;
+          catalogId = resolved.canonicalCatalogId;
+        }
+      }
+
+      if (cleanName !== ex.name || (catalogId && catalogId !== ex.catalogId)) {
+        modified = true;
+        return {
+          ...ex,
+          name: cleanName,
+          catalogId: catalogId || ex.catalogId,
+        };
+      }
+      return ex;
+    }),
+  }));
+
+  return {
+    session: { ...session, blocks },
+    modified,
+  };
+}
+
+/**
+ * Cleans active workout draft blocks so live training has crystal-clear exercise names.
+ */
+export function cleanActiveWorkoutExercises(activeWorkout: any): { activeWorkout: any; modified: boolean } {
+  let modified = false;
+  const blocks = (activeWorkout.blocks || []).map((block: any) => ({
+    ...block,
+    exercises: (block.exercises || []).map((ex: any) => {
+      let cleanName = sanitizeExerciseName(ex.name);
+      let catalogId = ex.catalogId;
+
+      if (catalogId) {
+        const cat = BUILTIN_EXERCISES.find((b) => b.id === catalogId);
+        if (cat) {
+          cleanName = cat.name;
+        }
+      } else {
+        const resolved = resolveExerciseIntelligently(cleanName, ex.mode);
+        if (resolved.isCanonicalMatch) {
+          cleanName = resolved.canonicalName;
+          catalogId = resolved.canonicalCatalogId;
+        }
+      }
+
+      if (cleanName !== ex.name || (catalogId && catalogId !== ex.catalogId)) {
+        modified = true;
+        return {
+          ...ex,
+          name: cleanName,
+          catalogId: catalogId || ex.catalogId,
+        };
+      }
+      return ex;
+    }),
+  }));
+
+  return {
+    activeWorkout: { ...activeWorkout, blocks },
+    modified,
+  };
 }

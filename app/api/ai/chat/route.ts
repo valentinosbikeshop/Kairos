@@ -3,7 +3,10 @@ import {
   AiChatContext,
   extractActionSuggestionsFromText,
   generateScientificAiResponse,
+  parseAgenticUserCommand,
+  stripActionTagsFromAiText,
 } from '@/lib/aiChatEngine';
+import { generateWithGeminiCascade } from '@/lib/geminiClient';
 
 export const runtime = 'nodejs';
 
@@ -16,7 +19,8 @@ export async function POST(req: NextRequest) {
 
     const messages = body.messages || [];
     const context = body.context || {};
-    const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content?.trim() || '';
+    const lastUserMessage =
+      [...messages].reverse().find((m) => m.role === 'user')?.content?.trim() || '';
 
     if (!lastUserMessage) {
       return NextResponse.json(
@@ -25,13 +29,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const normQuery = lastUserMessage.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // 1. Direct Agentic Command Fast-Path (100% deterministic routine edits, day loading, profile updates)
+    const directAgenticCommand = parseAgenticUserCommand(lastUserMessage, context);
+    if (directAgenticCommand) {
+      return NextResponse.json({
+        ok: true,
+        message: {
+          role: 'assistant',
+          content: directAgenticCommand.content,
+        },
+        suggestedActions: directAgenticCommand.suggestedActions,
+        modelUsed: 'kairos-agentic-engine',
+      });
+    }
+
+    const normQuery = lastUserMessage
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
     const isRoutineCleanupQuery =
       /\b(?:limpi(?:a|ar|ame)?|quit(?:a|ar|ame)?|corregi(?:r|me)?|elimin(?:a|ar)?|arregl(?:a|ar)?|borr(?:a|ar)?|nombre[s]?\s*(?:de\s*)?ejercicio|texto\s*extra|ruido|45\s*kg|120\s*kg|kilos?\s*(?:en|del|al)|rescat[oó]|adjunt[oó])\b/i.test(
         normQuery
       );
 
-    // Fast-path: When user explicitly asks to clean exercise names or fix noise from importing routine
+    // 2. Routine Cleanup Fast-Path
     if (isRoutineCleanupQuery && context.routineDays && context.routineDays.length > 0) {
       const localCleanupResult = await generateScientificAiResponse(lastUserMessage, context);
       return NextResponse.json({
@@ -41,87 +62,95 @@ export async function POST(req: NextRequest) {
           content: localCleanupResult.content,
         },
         suggestedActions: localCleanupResult.suggestedActions,
+        modelUsed: 'kairos-agentic-engine',
       });
     }
 
-    const geminiKey = process.env.GEMINI_API_KEY;
+    // 3. High-Power Gemini AI Cascade (gemini-2.5-pro -> gemini-2.5-flash -> gemini-2.0-flash) with Anti-Saturation
+    const recentHistoryText = messages
+      .slice(-6)
+      .map((m) => `${m.role === 'user' ? 'Usuario' : 'Kairos Coach'}: ${m.content}`)
+      .join('\n\n');
 
-    if (geminiKey) {
-      try {
-        const systemPrompt = `Eres KAIROS AI COACH, el consultor científico integral de alto rendimiento integrado en la aplicación deportiva KAIROS.
+    const systemPrompt = `Eres KAIROS AI COACH, el consultor científico integral y agente interactivo de alto rendimiento integrado en la aplicación deportiva KAIROS.
 Tienes dominio científico absoluto sobre:
 1. Arquitectura de programación y periodización deportiva (división de días, frecuencia de entrenamiento, volumen semanal por grupo muscular de 10 a 20 series efectivas según Schoenfeld e Israetel, gestión de la fatiga del SNC y volumen de recuperación).
-2. Biomecánica aplicada del ejercicio (perfiles de resistencia, brazos de momento, curvas de longitud-tensión, planos escapulares, rango activo libre de pinzamientos y selección de ejercicios para hipertrofia máxima o fuerza).
+2. Biomecánica aplicada del ejercicio (perfiles de resistencia, brazos de momento, curvas de longitud-tensión, planos escapulares, músculos agonistas, sinergistas necesarios, estabilizadores y ratio estímulo/fatiga SFR).
 3. Sobrecarga progresiva y autorregulación (RIR/RPE, tempo excéntrico controlado, doble progresión y resolución de estancamientos).
-4. Nutrición deportiva basada en evidencia (gramos exactos de proteína por peso corporal, umbral de leucina, hidratación celular, superávit o déficit calórico y sincronización de nutrientes peri-entrenamiento).
-5. Calistenia de alta tensión, isométricos de palanca, Hyrox, protocolos HIIT y temporizadores tácticos.
-6. Gestión integral de KAIROS: el usuario puede añadir cualquier ejercicio recomendado directamente con 1 toque a su rutina base o al entrenamiento en vivo, iniciar descansos automáticos o reordenar sus sesiones.
+4. Nutrición deportiva basada en evidencia (gramos exactos de proteína por peso corporal, umbral de leucina, hidratación celular, superávit o déficit calórico).
+5. Capacidad Agéntica Interactiva en KAIROS: puedes editar la rutina del usuario, añadir/eliminar/sustituir ejercicios, cargar días completos en el entrenamiento de hoy, actualizar el peso o parámetros del perfil e iniciar temporizadores.
 
-Contexto actual del usuario:
+Contexto actual del usuario en tiempo real:
 - Nombre: ${context.userName || 'Atleta'}
 - Peso corporal: ${context.userWeightKg ? `${context.userWeightKg} kg` : 'Desconocido'}
 - Altura: ${context.userHeightCm ? `${context.userHeightCm} cm` : 'Desconocida'}
 - Objetivo primario: ${context.userGoal || 'Hipertrofia y rendimiento atlético'}
 - Nivel de experiencia: ${context.experienceLevel || 'Intermedio'}
 - Rutina base activa: ${context.routineName || 'No definida'} (Días activos: ${context.routineDaysCount || 'N/A'})
-${context.routineDays?.length ? `- Ejercicios actuales en rutina: ${JSON.stringify(context.routineDays.map((d) => ({ dia: d.label, ejercicios: d.exercises.map((e) => e.name) })))}` : ''}
-- Entrenamiento de hoy: ${context.activeWorkoutTitle || 'Ninguno en curso'}
-- Pantalla donde se abrió la consulta: ${context.currentScreen || 'General'}
-${context.currentScreen === 'routine_manager' ? '- ATENCIÓN: El usuario se encuentra en la pantalla de "Gestionar Mi Rutina". Responde y enfócate exactamente en lo que solicita para su rutina.' : ''}
-${context.currentScreen === 'workout' ? '- ATENCIÓN: El usuario se encuentra en pleno entrenamiento activo. Prioriza respuestas directas, sustitutos inmediatos por máquinas ocupadas, descansos en segundos y ajustes de RIR/tempo.' : ''}
+${
+  context.routineDays?.length
+    ? `- Estructura completa de su rutina: ${JSON.stringify(
+        context.routineDays.map((d) => ({
+          id: d.id,
+          label: d.label,
+          focusTitle: d.focusTitle,
+          isRestDay: d.isRestDay,
+          ejercicios: d.exercises.map((e) => ({
+            name: e.name,
+            sets: e.sets,
+            reps: e.repRangeLabel,
+            weightKg: e.targetWeightKg,
+          })),
+        }))
+      )}`
+    : ''
+}
+- Entrenamiento de hoy en curso: ${context.activeWorkoutTitle || 'Ninguno'} (${
+      context.activeWorkoutExerciseNames?.length
+        ? context.activeWorkoutExerciseNames.join(', ')
+        : 'Sin ejercicios cargados'
+    })
+- Pantalla actual: ${context.currentScreen || 'General'}
 
 DIRECTIVAS INMUTABLES:
-1. Responde SIEMPRE en español con tono de científico deportivo de élite: claro, asertivo, riguroso, sin rodeos y respaldado en ciencia (Schoenfeld, Israetel, Helms, Beardsley, Morton, ISSN, Sports Medicine).
-2. Queda estrictamente prohibido utilizar pseudociencia, dogmas sin verificar o mitos populares de gimnasio.
-3. Si mencionas o recomiendas ejercicios específicos (ej. "Press Militar con Barra", "Sentadilla Búlgara", "Elevaciones Laterales", "Press Francés", "Dominadas", "Face Pull", "Peso Muerto Rumano"), usa sus nombres en español y precisa series (ej: 3 series), repeticiones (ej: 8-12 reps) y descanso (ej: descanso de 90 segundos), ya que el sistema habilitará botones directos para ejecutarlos o agregarlos con un toque.
-4. Si la consulta es de nutrición, calcula números exactos según su peso corporal (${context.userWeightKg || 75} kg).
-5. Mantén la respuesta con subtítulos y viñetas estructuradas.`;
+1. Responde SIEMPRE en español con tono de científico deportivo de élite: claro, asertivo, riguroso y respaldado en evidencia (Schoenfeld, Israetel, Helms, Beardsley, Morton, ISSN).
+2. Si recomiendas ejercicios específicos, usa sus nombres canónicos en español (ej. "Press de Banca Plano", "Press Inclinado con Mancuernas", "Elevaciones Laterales en Polea", "Sentadilla Hack", "Peso Muerto Rumano con Barra", "Jalón al Pecho Agarre Neutro", "Remo en Polea Baja", "Curl Bayesiano en Polea") y precisa series, repeticiones y descanso en segundos, para que el sistema genere botones interactivos de 1 toque.
+3. Si la consulta es de nutrición, calcula números exactos según su peso corporal (${context.userWeightKg || 75} kg).
+4. Mantén la respuesta con subtítulos y viñetas estructuradas.
 
-        const geminiContents = [
-          {
-            role: 'user',
-            parts: [{ text: `${systemPrompt}\n\nPregunta del usuario:\n${lastUserMessage}` }],
-          },
-        ];
+Historial reciente de conversación:
+${recentHistoryText}
 
-        const resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: geminiContents,
-              generationConfig: {
-                temperature: 0.35,
-                maxOutputTokens: 950,
-              },
-            }),
-          }
-        );
+Último mensaje del usuario a responder:
+${lastUserMessage}`;
 
-        if (resp.ok) {
-          const json = (await resp.json()) as {
-            candidates?: { content?: { parts?: { text?: string }[] } }[];
-          };
-          const aiText = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (aiText) {
-            const suggestedActions = extractActionSuggestionsFromText(aiText, lastUserMessage);
-            return NextResponse.json({
-              ok: true,
-              message: {
-                role: 'assistant',
-                content: aiText,
-              },
-              suggestedActions,
-            });
-          }
-        }
-      } catch {
-        // Fallback below
-      }
+    const aiRes = await generateWithGeminiCascade({
+      prompt: systemPrompt,
+      tier: 'pro',
+      temperature: 0.3,
+      maxOutputTokens: 1050,
+      cacheTtlMs: 8 * 60_000,
+    });
+
+    if (aiRes.ok && aiRes.text) {
+      const cleanContent = stripActionTagsFromAiText(aiRes.text);
+      const suggestedActions = extractActionSuggestionsFromText(
+        aiRes.text,
+        lastUserMessage,
+        context
+      );
+      return NextResponse.json({
+        ok: true,
+        message: {
+          role: 'assistant',
+          content: cleanContent,
+        },
+        suggestedActions,
+        modelUsed: aiRes.modelUsed,
+      });
     }
 
-    // High performance verified scientific response fallback
+    // 4. Verified Scientific & Agentic Local Fallback (0-downtime guarantee if all external tiers were busy)
     const localResult = await generateScientificAiResponse(lastUserMessage, context);
 
     return NextResponse.json({
@@ -131,9 +160,22 @@ DIRECTIVAS INMUTABLES:
         content: localResult.content,
       },
       suggestedActions: localResult.suggestedActions,
+      modelUsed: 'kairos-scientific-fallback',
     });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error interno del servidor.';
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  } catch {
+    // Zero-downtime safety net: even under unexpected runtime exceptions, answer with local scientific engine
+    const fallbackResult = await generateScientificAiResponse(
+      'Hola, ¿cómo puedo ayudarte hoy?',
+      {}
+    );
+    return NextResponse.json({
+      ok: true,
+      message: {
+        role: 'assistant',
+        content: fallbackResult.content,
+      },
+      suggestedActions: fallbackResult.suggestedActions,
+      modelUsed: 'kairos-zero-error-fallback',
+    });
   }
 }

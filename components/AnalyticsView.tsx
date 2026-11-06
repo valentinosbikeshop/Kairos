@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useKairos } from '@/lib/kairosContext';
-import { computeExecutiveStats } from '@/lib/analyticsEngine';
+import { computeExecutiveStats, computeMuscleFatigueReports } from '@/lib/analyticsEngine';
 import { normalizeSearchText } from '@/lib/exerciseDatabase';
+import { synthesizeExerciseDeepProfile } from '@/lib/exerciseClassifierEngine';
 import {
   getAgeFromBirthDate,
   getProfileAge,
@@ -11,8 +12,9 @@ import {
 } from '@/lib/formatters';
 import { RirValue } from '@/types/kairos';
 import { VectorEvolutionChart } from '@/components/VectorEvolutionChart';
+import { ExerciseDeepProfileModal } from '@/components/ExerciseIntelligenceModal';
 import { AppUpdateButton } from '@/components/AppUpdateManager';
-import { Check, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Brain, Check, Cpu, Flame, Search, SlidersHorizontal, X, Zap } from 'lucide-react';
 
 export function AnalyticsView() {
   const { sessions, evaluations, catalog, profile, saveUserProfile } = useKairos();
@@ -135,6 +137,25 @@ export function AnalyticsView() {
       filteredEvaluations[0] ??
       null,
     [filteredEvaluations, selectedCatalogId]
+  );
+
+  const [showDeepModal, setShowDeepModal] = useState(false);
+
+  const activeDeepProfile = useMemo(() => {
+    if (!activeEvaluation) return null;
+    return (
+      activeEvaluation.deepProfile ??
+      synthesizeExerciseDeepProfile(
+        activeEvaluation.exerciseName,
+        activeEvaluation.mode,
+        activeEvaluation.catalogId
+      )
+    );
+  }, [activeEvaluation]);
+
+  const muscleFatigueReports = useMemo(
+    () => computeMuscleFatigueReports(sessions),
+    [sessions]
   );
 
   const fatigueNotes = useMemo(
@@ -603,14 +624,85 @@ export function AnalyticsView() {
             )}
 
             {activeEvaluation ? (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-brand">
-                  {activeEvaluation.exerciseName}
-                </h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-brand">
+                    {activeEvaluation.exerciseName}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeepModal(true)}
+                    className="inline-flex items-center gap-1 rounded-xl border border-gothic/40 bg-gothic/15 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-gothic/25"
+                  >
+                    <Brain className="h-3.5 w-3.5 text-gothic" />
+                    Ficha Biomecánica
+                  </button>
+                </div>
+
                 <VectorEvolutionChart
                   evaluation={activeEvaluation}
                   userWeightKg={profile?.weightKg}
                 />
+
+                {/* Inline Deep Biomechanics & Fatigue Summary Card */}
+                {activeDeepProfile && (
+                  <div className="rounded-xl border border-stoneborder/80 bg-background/90 p-3.5 space-y-2.5 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stoneborder/60 pb-2">
+                      <span className="font-gothic text-[11px] font-semibold uppercase tracking-widest text-gothic">
+                        Anatomía y Variables del Ejercicio
+                      </span>
+                      <span className="text-[11px] text-brand-muted">
+                        {activeDeepProfile.movementPattern} · {activeDeepProfile.mechanicType}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div>
+                        <span className="block text-[10px] font-semibold uppercase tracking-wider text-rose-300">
+                          Músculos Principales (Agonistas)
+                        </span>
+                        <p className="mt-0.5 font-semibold text-brand">
+                          {activeDeepProfile.primaryMuscles.join(', ')}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                          Músculos Necesarios (Sinergistas)
+                        </span>
+                        <p className="mt-0.5 text-brand/90">
+                          {activeDeepProfile.secondaryMuscles.join(', ')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      <div className="rounded-lg border border-stoneborder/70 bg-surface px-2.5 py-1.5">
+                        <span className="flex items-center gap-1 text-[10px] text-emerald-300">
+                          <Zap className="h-3 w-3" /> SFR
+                        </span>
+                        <span className="font-mono text-xs font-bold text-brand">
+                          {activeDeepProfile.sfrScore}/10
+                        </span>
+                      </div>
+                      <div className="rounded-lg border border-stoneborder/70 bg-surface px-2.5 py-1.5">
+                        <span className="flex items-center gap-1 text-[10px] text-amber-300">
+                          <Cpu className="h-3 w-3" /> Fatiga SNC
+                        </span>
+                        <span className="font-mono text-xs font-bold text-brand">
+                          {activeDeepProfile.cnsFatigueIndex}/10
+                        </span>
+                      </div>
+                      <div className="rounded-lg border border-stoneborder/70 bg-surface px-2.5 py-1.5">
+                        <span className="flex items-center gap-1 text-[10px] text-rose-300">
+                          <Flame className="h-3 w-3" /> Fatiga Local
+                        </span>
+                        <span className="font-mono text-xs font-bold text-brand">
+                          {activeDeepProfile.localFatigueIndex}/10 · ~{activeDeepProfile.recoveryHours}h
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="py-4 text-center text-xs text-brand-muted">
@@ -618,6 +710,80 @@ export function AnalyticsView() {
               </p>
             )}
           </section>
+
+          {/* ================= MAPA DE FATIGA ACUMULADA Y VOLUMEN MUSCULAR (7 DÍAS) ================= */}
+          {muscleFatigueReports.length > 0 && (
+            <section className="rounded-2xl border border-stoneborder bg-surface p-4 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-gothic text-xs font-semibold uppercase tracking-widest text-gothic">
+                    Fatiga Acumulada y Volumen Muscular (7 Días)
+                  </h2>
+                  <p className="text-[11px] text-brand-muted mt-0.5">
+                    Cálculo exacto integrando series directas (1.0x), sinergistas necesarios (0.5x), RIR/RPE y disipación fisiológica.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                {muscleFatigueReports.map((rep) => {
+                  const barColor =
+                    rep.status === 'Sobrecarga Crítica'
+                      ? 'bg-rose-500'
+                      : rep.status === 'Fatiga Alta'
+                      ? 'bg-amber-500'
+                      : rep.status === 'Carga Productiva'
+                      ? 'bg-gothic'
+                      : 'bg-emerald-500';
+
+                  const badgeColor =
+                    rep.status === 'Sobrecarga Crítica'
+                      ? 'border-rose-500/40 bg-rose-500/15 text-rose-300'
+                      : rep.status === 'Fatiga Alta'
+                      ? 'border-amber-500/40 bg-amber-500/15 text-amber-300'
+                      : rep.status === 'Carga Productiva'
+                      ? 'border-gothic/40 bg-gothic/15 text-brand'
+                      : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300';
+
+                  return (
+                    <div
+                      key={rep.muscleGroup}
+                      className="rounded-xl border border-stoneborder/80 bg-background p-3 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-brand">{rep.muscleGroup}</span>
+                        <span
+                          className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${badgeColor}`}
+                        >
+                          {rep.status} · {rep.accumulatedFatiguePct}% fatiga
+                        </span>
+                      </div>
+
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className={`h-full rounded-full transition-all ${barColor}`}
+                          style={{ width: `${rep.accumulatedFatiguePct}%` }}
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-brand-muted">
+                        <span>
+                          Directas: <strong className="text-brand">{rep.directSets7d}</strong> · Sinergistas:{' '}
+                          <strong className="text-brand">{rep.synergistSets7d}</strong> · Efectivas:{' '}
+                          <strong className="text-gothic">{rep.effectiveSets7d} series</strong>
+                        </span>
+                        <span>
+                          {rep.estimatedRecoveryHoursRemaining > 0
+                            ? `Recup. restante: ~${rep.estimatedRecoveryHoursRemaining}h`
+                            : '100% Recuperado para máxima carga'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* Calm Recovery Advice (only shown if fatigue is detected, without stock-alarm styling) */}
           {fatigueNotes.length > 0 && (
@@ -642,6 +808,17 @@ export function AnalyticsView() {
             </section>
           )}
         </>
+      )}
+
+      {activeEvaluation && activeDeepProfile && (
+        <ExerciseDeepProfileModal
+          isOpen={showDeepModal}
+          onClose={() => setShowDeepModal(false)}
+          exerciseName={activeEvaluation.exerciseName}
+          mode={activeEvaluation.mode}
+          catalogId={activeEvaluation.catalogId}
+          deepProfile={activeDeepProfile}
+        />
       )}
     </div>
   );

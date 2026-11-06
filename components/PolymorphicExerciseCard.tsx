@@ -38,14 +38,18 @@ import {
   uid,
 } from '@/lib/formatters';
 import {
+  Brain,
   Check,
   Clock,
   Play,
   Plus,
+  RefreshCw,
   Square,
   Timer,
   Trash2,
 } from 'lucide-react';
+import { synthesizeExerciseDeepProfile } from '@/lib/exerciseClassifierEngine';
+import { ExerciseDeepProfileModal } from '@/components/ExerciseIntelligenceModal';
 
 interface TimeMmSsInputProps {
   seconds: number;
@@ -197,9 +201,29 @@ export function PolymorphicExerciseCard({
   blockId,
   exercise,
 }: PolymorphicExerciseCardProps) {
-  const { sessions, profile, mutateExercise, removeExerciseFromBlock } = useKairos();
+  const {
+    sessions,
+    profile,
+    mutateExercise,
+    removeExerciseFromBlock,
+    researchingExercises,
+    researchCustomExercise,
+  } = useKairos();
   const { startRestTimer, startIsometricTimer } = useTimerEngine();
   const workoutDefaults = useMemo(() => getResolvedWorkoutDefaults(profile), [profile]);
+  const [showDeepProfile, setShowDeepProfile] = useState(false);
+
+  const deepProfile = useMemo(
+    () =>
+      exercise.deepProfile ??
+      synthesizeExerciseDeepProfile(exercise.name, exercise.mode, exercise.catalogId),
+    [exercise.deepProfile, exercise.name, exercise.mode, exercise.catalogId]
+  );
+
+  const isResearching = Boolean(
+    researchingExercises[exercise.catalogId] ||
+      researchingExercises[exercise.name.toLowerCase()]
+  );
 
   const ghost = useMemo(
     () => getLastExerciseGhost(sessions, exercise.catalogId, exercise.name),
@@ -317,9 +341,41 @@ export function PolymorphicExerciseCard({
       {/* Exercise Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h4 className="text-sm font-medium text-brand leading-snug">{exercise.name}</h4>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-sm font-medium text-brand leading-snug">{exercise.name}</h4>
+            <button
+              type="button"
+              onClick={() => setShowDeepProfile(true)}
+              title="Ver anatomía profunda, músculos necesarios y variables de fatiga"
+              className="inline-flex items-center gap-1 rounded-lg border border-gothic/35 bg-gothic/10 px-2 py-0.5 text-[10px] font-semibold text-brand transition hover:border-gothic hover:bg-gothic/20"
+            >
+              {isResearching ? (
+                <>
+                  <RefreshCw className="h-2.5 w-2.5 animate-spin text-amber-400" />
+                  <span className="text-amber-300">Investigando IA...</span>
+                </>
+              ) : (
+                <>
+                  <Brain className="h-2.5 w-2.5 text-gothic" />
+                  <span>
+                    SNC {deepProfile.cnsFatigueIndex}/10 · SFR {deepProfile.sfrScore}/10
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
           <div className="flex items-center gap-2 text-[11px] text-brand-muted mt-0.5 flex-wrap">
-            <span>{exercise.muscleGroup}</span>
+            <span className="font-medium text-brand/85">
+              {deepProfile.primaryMuscles[0] || exercise.muscleGroup}
+            </span>
+            {deepProfile.secondaryMuscles.length > 0 && (
+              <>
+                <span>·</span>
+                <span className="text-brand-muted">
+                  Sinergistas: {deepProfile.secondaryMuscles.slice(0, 2).join(', ')}
+                </span>
+              </>
+            )}
             {ghost && (
               <>
                 <span>·</span>
@@ -377,6 +433,19 @@ export function PolymorphicExerciseCard({
           </button>
         </div>
       </div>
+
+      <ExerciseDeepProfileModal
+        isOpen={showDeepProfile}
+        onClose={() => setShowDeepProfile(false)}
+        exerciseName={exercise.name}
+        mode={exercise.mode}
+        catalogId={exercise.catalogId}
+        deepProfile={deepProfile}
+        isResearching={isResearching}
+        onTriggerResearch={() =>
+          void researchCustomExercise(exercise.name, exercise.mode, exercise.catalogId)
+        }
+      />
 
       {/* ================= A. MODO HIPERTROFIA ================= */}
       {exercise.mode === 'hypertrophy' && (

@@ -32,6 +32,8 @@ import {
   Watch,
   Sparkles,
   HelpCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface HeartRateMonitorWidgetProps {
@@ -48,6 +50,7 @@ interface HeartRateTelemetryContextValue {
   detectedBrand: string | null;
   isConnecting: boolean;
   bleError: string | null;
+  setBleError: (err: string | null) => void;
   scanMode: 'standard' | 'extended';
   setScanMode: (mode: 'standard' | 'extended') => void;
   bpm: number;
@@ -64,6 +67,10 @@ interface HeartRateTelemetryContextValue {
   connectBluetoothHeartRate: (target?: 'standard' | 'huawei' | 'extended' | boolean) => Promise<void>;
   disconnectBluetooth: () => void;
   resetCalories: () => void;
+  showIosModal: boolean;
+  setShowIosModal: (show: boolean) => void;
+  showNotFoundHelp: boolean;
+  setShowNotFoundHelp: (show: boolean) => void;
 }
 
 const HeartRateTelemetryContext = createContext<HeartRateTelemetryContextValue | null>(null);
@@ -84,6 +91,8 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
   const [isConnecting, setIsConnecting] = useState(false);
   const [bleError, setBleError] = useState<string | null>(null);
   const [scanMode, setScanMode] = useState<'standard' | 'extended'>('standard');
+  const [showIosModal, setShowIosModal] = useState(false);
+  const [showNotFoundHelp, setShowNotFoundHelp] = useState(false);
 
   const [bpm, setBpm] = useState<number>(128);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
@@ -180,10 +189,12 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
   const connectBluetoothHeartRate = useCallback(
     async (target: 'standard' | 'huawei' | 'extended' | boolean = 'standard') => {
       setBleError(null);
+      setShowNotFoundHelp(false);
 
       if (typeof window === 'undefined' || !(navigator as any).bluetooth) {
+        setShowIosModal(true);
         setBleError(
-          'Web Bluetooth no está habilitado directamente en este navegador. En Android usa Chrome o Edge. En iPhone (iOS) usa la app gratuita Bluefy o activa el Modo Simulación.'
+          'Web Bluetooth no está habilitado en Safari de iPhone directamente. Usa la app gratuita Bluefy o activa el Modo Simulación.'
         );
         return;
       }
@@ -216,21 +227,6 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
           { namePrefix: 'Echo' },
         ];
 
-        const huaweiFilters = [
-          { namePrefix: 'Huawei' },
-          { namePrefix: 'HUAWEI' },
-          { namePrefix: 'huawei' },
-          { namePrefix: 'Band' },
-          { namePrefix: 'band' },
-          { namePrefix: 'Band 11' },
-          { namePrefix: 'HONOR' },
-          { namePrefix: 'Honor' },
-          { namePrefix: 'Watch' },
-          { namePrefix: 'watch' },
-          { namePrefix: 'FIT' },
-          { services: ['heart_rate'] },
-        ];
-
         const commonOptionalServices = [
           'heart_rate',
           'battery_service',
@@ -243,28 +239,22 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
           '0000fe95-0000-1000-8000-00805f9b34fb',
         ];
 
-        let scanConfig: any;
-        if (isExtended) {
-          scanConfig = {
-            acceptAllDevices: true,
-            optionalServices: commonOptionalServices,
-          };
-        } else if (isHuawei) {
-          scanConfig = {
-            filters: huaweiFilters,
-            optionalServices: commonOptionalServices,
-          };
-        } else {
-          scanConfig = {
-            filters: standardFilters,
-            optionalServices: commonOptionalServices,
-          };
-        }
+        // Para Huawei Band 11 usamos acceptAllDevices: true para que aparezca 100% en la lista de dispositivos cercanos
+        const scanConfig: any =
+          isHuawei || isExtended
+            ? {
+                acceptAllDevices: true,
+                optionalServices: commonOptionalServices,
+              }
+            : {
+                filters: standardFilters,
+                optionalServices: commonOptionalServices,
+              };
 
         const device = await (navigator as any).bluetooth.requestDevice(scanConfig);
 
         bluetoothDeviceRef.current = device;
-        setDeviceName(device.name || 'Pulsómetro Inteligente');
+        setDeviceName(device.name || 'Huawei Band 11');
 
         device.addEventListener('gattserverdisconnected', onDisconnected);
 
@@ -296,7 +286,7 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
 
         if (!service) {
           throw new Error(
-            'El reloj se conectó por Bluetooth, pero no está emitiendo pulso cardíaco. En tu Huawei Band ve a Ajustes > Frecuencia Cardíaca > "Transmitir FC" (o inicia una sesión de ejercicio y desliza para transmitir).'
+            'Tu Huawei Band 11 se conectó por Bluetooth, pero no está emitiendo pulso cardíaco. En tu pulsera entra a Ajustes > Frecuencia Cardíaca > "Transmitir FC" (o inicia una sesión de ejercicio y desliza para transmitir).'
           );
         }
 
@@ -320,9 +310,13 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
         setDeviceConnected(true);
         setIsSimulating(false);
         setIsConnecting(false);
+        setShowNotFoundHelp(false);
+        setShowIosModal(false);
       } catch (err: any) {
         setIsConnecting(false);
         if (err.name === 'NotFoundError') {
+          // El usuario canceló o el dispositivo no se visualizó en el diálogo del navegador
+          setShowNotFoundHelp(true);
           return;
         }
         setBleError(
@@ -359,6 +353,7 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
       detectedBrand,
       isConnecting,
       bleError,
+      setBleError,
       scanMode,
       setScanMode,
       bpm,
@@ -375,6 +370,10 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
       connectBluetoothHeartRate,
       disconnectBluetooth,
       resetCalories,
+      showIosModal,
+      setShowIosModal,
+      showNotFoundHelp,
+      setShowNotFoundHelp,
     }),
     [
       deviceConnected,
@@ -395,6 +394,8 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
       connectBluetoothHeartRate,
       disconnectBluetooth,
       resetCalories,
+      showIosModal,
+      showNotFoundHelp,
     ]
   );
 
@@ -520,6 +521,7 @@ export function HeartRateMonitorWidget({
     detectedBrand,
     isConnecting,
     bleError,
+    setBleError,
     bpm,
     isSimulating,
     setIsSimulating,
@@ -532,10 +534,25 @@ export function HeartRateMonitorWidget({
     pulseDurationSec,
     connectBluetoothHeartRate,
     disconnectBluetooth,
+    showIosModal,
+    setShowIosModal,
+    showNotFoundHelp,
+    setShowNotFoundHelp,
   } = useHeartRateTelemetry();
 
   const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
-  const [activeGuideTab, setActiveGuideTab] = useState<BrandTab>('xiaomi');
+  const [activeGuideTab, setActiveGuideTab] = useState<BrandTab>('huawei');
+  const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+
+  const handleCopyKairosUrl = () => {
+    try {
+      if (typeof window !== 'undefined' && navigator.clipboard) {
+        navigator.clipboard.writeText(window.location.href);
+        setCopiedUrl(true);
+        setTimeout(() => setCopiedUrl(false), 2500);
+      }
+    } catch {}
+  };
 
   useEffect(() => {
     if (onBpmChange) {
@@ -605,22 +622,27 @@ export function HeartRateMonitorWidget({
                 type="button"
                 onClick={() => connectBluetoothHeartRate('huawei')}
                 disabled={isConnecting}
-                className="flex items-center gap-1 rounded-lg border border-sky-500/50 bg-sky-500/15 px-2.5 py-1 text-[11px] font-semibold text-sky-200 hover:bg-sky-500/25 active:scale-95 transition-all shadow-sm"
+                className="flex items-center gap-1.5 rounded-xl border border-sky-500/50 bg-sky-500/20 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-500/30 active:scale-95 transition-all shadow-sm"
                 title="Vincular Huawei Band 11 con 1 toque directo"
               >
                 {isConnecting ? (
-                  <RefreshCw className="h-3 w-3 animate-spin text-sky-400" />
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-sky-400" />
+                    <span>Buscando...</span>
+                  </>
                 ) : (
-                  <Bluetooth className="h-3 w-3 text-sky-400" />
+                  <>
+                    <Bluetooth className="h-3.5 w-3.5 text-sky-400" />
+                    <span>Huawei Band 11</span>
+                  </>
                 )}
-                <span>Huawei Band 11</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => connectBluetoothHeartRate('standard')}
                 disabled={isConnecting}
-                className="flex items-center gap-1 rounded-lg border border-stoneborder bg-background px-2 py-1 text-[11px] font-medium text-brand hover:border-gothic/50 active:scale-95 transition-all shadow-sm"
+                className="flex items-center gap-1 rounded-xl border border-stoneborder bg-background px-2.5 py-1.5 text-xs font-medium text-brand hover:border-gothic/50 active:scale-95 transition-all shadow-sm"
               >
                 <span>Otro</span>
               </button>
@@ -628,6 +650,204 @@ export function HeartRateMonitorWidget({
           )}
         </div>
       </div>
+
+      {/* 1. Alerta interactiva para iOS Safari (iPhone) */}
+      {showIosModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-fade-up">
+          <div className="w-full max-w-md rounded-3xl border border-stoneborder bg-[#121115] p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-stoneborder/70 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                  <Bluetooth className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="font-gothic text-sm font-semibold tracking-wide text-brand">
+                    Bluetooth en iPhone (iOS)
+                  </h3>
+                  <p className="text-[10px] text-brand-muted">
+                    Restricción del sistema operativo Safari de Apple
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowIosModal(false)}
+                className="rounded-lg p-1 text-brand-muted hover:text-brand"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs leading-relaxed">
+              <p className="text-brand-muted">
+                Apple no permite conexiones Web Bluetooth directas dentro de <strong className="text-brand">Safari regular</strong>. Para vincular tu Huawei Band 11 en iPhone tienes 2 opciones rápidas:
+              </p>
+
+              {/* Opción 1: Bluefy */}
+              <div className="rounded-2xl border border-sky-500/40 bg-sky-500/10 p-3.5 space-y-2.5">
+                <div className="flex items-center gap-2 text-sky-300 font-semibold text-xs">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/20 text-sky-200 text-[11px] font-bold">1</span>
+                  <span>Usa la app gratuita Bluefy (Recomendado)</span>
+                </div>
+                <p className="text-[11px] text-brand-muted leading-relaxed">
+                  Descarga <strong>Bluefy - Web BLE Browser</strong> en tu iPhone desde App Store. Abre KAIROS desde Bluefy y podrás conectar tu Huawei Band 11 directamente.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCopyKairosUrl}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-sky-500/50 bg-sky-500/20 py-2.5 px-3 text-xs font-semibold text-sky-200 hover:bg-sky-500/30 active:scale-95 transition-all shadow-sm"
+                >
+                  {copiedUrl ? (
+                    <>
+                      <Check className="h-4 w-4 text-emerald-400" />
+                      <span className="text-emerald-300">¡Enlace Copiado! Pégalo en Bluefy</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4 text-sky-400" />
+                      <span>Copiar Enlace de KAIROS para Bluefy</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Opción 2: Modo Simulación con 1 toque */}
+              <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-brand font-semibold text-xs">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">2</span>
+                  <span>O activa Modo Simulación de Pulsaciones</span>
+                </div>
+                <p className="text-[11px] text-brand-muted leading-relaxed">
+                  Prueba de inmediato todas las zonas cardíacas, pulsaciones y cálculo metabólico de calorías sin hardware físico.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSimulating(true);
+                    setShowIosModal(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-gothic/20 border border-gothic/40 py-2 text-xs font-semibold text-brand hover:bg-gothic/30 active:scale-95 transition-all"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-gothic" />
+                  <span>Activar Modo Simulación con 1 Toque</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-stoneborder/70 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowIosModal(false)}
+                className="rounded-xl border border-stoneborder bg-background px-4 py-2 text-xs font-semibold text-brand hover:border-gothic/60"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Dispositivo no encontrado o diálogo cancelado */}
+      {showNotFoundHelp && (
+        <div className="rounded-2xl border border-sky-500/40 bg-sky-500/10 p-3.5 space-y-2.5 animate-fade-up">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sky-300 font-semibold text-xs">
+              <Sparkles className="h-4 w-4 shrink-0 text-sky-400" />
+              <span>¿No viste tu Huawei Band 11 en la lista?</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowNotFoundHelp(false)}
+              className="rounded-lg p-1 text-brand-muted hover:text-brand"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <p className="text-[11px] text-brand-muted leading-relaxed">
+            Sigue estos 2 pasos rápidos en tu pulsera para que aparezca al instante:
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+            <div className="rounded-xl border border-stoneborder/60 bg-background/80 p-2.5 space-y-1">
+              <p className="font-semibold text-brand">1. En tu Huawei Band 11:</p>
+              <p className="text-brand-muted">
+                Entra en <strong>Ajustes ⚙️</strong> → <strong>Frecuencia Cardíaca</strong> → activa <strong>&quot;Transmitir FC&quot;</strong> (o inicia un entrenamiento y desliza a la derecha).
+              </p>
+            </div>
+            <div className="rounded-xl border border-stoneborder/60 bg-background/80 p-2.5 space-y-1">
+              <p className="font-semibold text-brand">2. Cierra app de Salud:</p>
+              <p className="text-brand-muted">
+                Cierra la app <strong>Salud de Huawei</strong> de las apps recientes del celular para que libere la señal Bluetooth.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setShowNotFoundHelp(false);
+                void connectBluetoothHeartRate(true);
+              }}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-sky-500/25 border border-sky-500/50 py-2 px-3 text-[11px] font-semibold text-sky-200 hover:bg-sky-500/35 active:scale-95 transition-all shadow-sm"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-sky-400" />
+              <span>Reintentar Búsqueda (Todos los dispositivos)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowNotFoundHelp(false);
+                setActiveGuideTab('huawei');
+                setShowGuideModal(true);
+              }}
+              className="rounded-xl border border-stoneborder bg-background py-2 px-3 text-[11px] text-brand-muted hover:text-brand hover:border-gothic/50 transition-colors"
+            >
+              Ver Guía Paso a Paso
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. BLE Error Banner Prominente (Arriba del pliegue) */}
+      {bleError && (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 space-y-2 text-xs animate-fade-up">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-amber-300 font-semibold">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Aviso de conexión Bluetooth</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBleError(null)}
+              className="rounded-lg p-1 text-brand-muted hover:text-brand"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <p className="text-[11px] text-brand-muted leading-relaxed">{bleError}</p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => connectBluetoothHeartRate(true)}
+              className="rounded-xl bg-amber-500/20 border border-amber-500/40 px-3 py-1.5 text-[11px] font-semibold text-brand hover:bg-amber-500/30 active:scale-95 transition-all"
+            >
+              Buscar Todos los Dispositivos Cercanos
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveGuideTab('huawei');
+                setShowGuideModal(true);
+              }}
+              className="rounded-xl border border-stoneborder bg-background px-3 py-1.5 text-[11px] text-brand-muted hover:text-brand"
+            >
+              Ver Guía Huawei Band 11
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Telemetry Display: BPM & Calories */}
       <div className="grid grid-cols-2 gap-3">
@@ -724,32 +944,6 @@ export function HeartRateMonitorWidget({
         </div>
       </div>
 
-      {/* BLE error banner with quick troubleshooting button */}
-      {bleError && (
-        <div className="rounded-xl border border-status-regress/40 bg-status-regress/10 p-3 space-y-2 text-xs">
-          <div className="flex items-center gap-1.5 text-status-regress font-semibold">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            <span>Nota de vinculación</span>
-          </div>
-          <p className="text-[11px] text-brand-muted leading-relaxed">{bleError}</p>
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => connectBluetoothHeartRate(true)}
-              className="rounded-lg bg-status-regress/20 border border-status-regress/40 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-status-regress/30"
-            >
-              Probar Búsqueda Ampliada (Todos los dispositivos)
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowGuideModal(true)}
-              className="rounded-lg border border-stoneborder bg-background px-2.5 py-1 text-[11px] text-brand-muted hover:text-brand"
-            >
-              Ver instrucciones de mi reloj
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Simulation / Manual Testing Slider Controls */}
       <div className="pt-1 border-t border-stoneborder/50">

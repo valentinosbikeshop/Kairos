@@ -24,6 +24,7 @@ import {
   ChevronUp,
   Dumbbell,
   Flame,
+  Heart,
   Play,
   Plus,
   RefreshCw,
@@ -257,6 +258,16 @@ export function WorkoutStudio() {
           <div className="flex items-center gap-1.5">
             <AppUpdateButton compact />
             <SoundSettingsButton />
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('timer')}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-stoneborder bg-surface px-2.5 py-1.5 text-xs font-medium text-brand-muted hover:border-gothic/50 hover:text-brand active:scale-95 transition-all duration-150"
+              title="Abrir Pulsómetro y Telemetría Cardíaca Live"
+            >
+              <Heart className="h-3.5 w-3.5 text-rose-500 fill-rose-500/20" />
+              <span className="hidden sm:inline">Pulsómetro</span>
+            </button>
 
             <button
               type="button"

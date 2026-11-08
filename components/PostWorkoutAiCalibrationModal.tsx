@@ -103,7 +103,7 @@ export function PostWorkoutAiCalibrationModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-md">
-      <div className="relative flex max-h-[90dvh] w-full max-w-[430px] flex-col rounded-t-3xl border-t border-x border-stoneborder bg-[#0C0A10] p-5 shadow-2xl text-brand animate-fade-up pb-[env(safe-area-inset-bottom)]">
+      <div className="relative flex h-[90dvh] max-h-[90dvh] w-full max-w-[430px] flex-col rounded-t-3xl border-t border-x border-stoneborder bg-[#0C0A10] p-5 shadow-2xl text-brand animate-fade-up pb-[env(safe-area-inset-bottom)]">
         {/* Header */}
         <div className="flex items-start justify-between border-b border-stoneborder/70 pb-3">
           <div className="space-y-1">

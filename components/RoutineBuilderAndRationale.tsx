@@ -1620,7 +1620,7 @@ export function RoutineSetupConfigurator({
                         </button>
                       </div>
 
-                      <div className="max-h-44 overflow-y-auto space-y-1">
+                      <div className="min-h-[44px] max-h-48 overflow-y-auto space-y-1">
                         {exSearch.trim().length >= 2 && (
                           <button
                             type="button"
@@ -1683,6 +1683,12 @@ export function RoutineSetupConfigurator({
                             </button>
                           );
                         })}
+
+                        {matchedExercises.length === 0 && exSearch.trim().length >= 2 && (
+                          <div className="py-2 px-1 text-center text-[11px] text-brand-muted">
+                            Sin coincidencias en la biblioteca básica. Toca el botón superior para crearlo e investigarlo con IA.
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -1859,7 +1865,7 @@ export function RoutineModalsHost({
         onClick={onCloseRationale}
       >
         <div
-          className="w-full max-w-[430px] max-h-[88dvh] flex flex-col rounded-t-3xl sm:rounded-3xl border border-stoneborder bg-surface shadow-2xl animate-fade-up pb-[max(1rem,env(safe-area-inset-bottom))]"
+          className="w-full max-w-[430px] h-[88dvh] max-h-[88dvh] flex flex-col rounded-t-3xl sm:rounded-3xl border border-stoneborder bg-surface shadow-2xl animate-fade-up pb-[max(1rem,env(safe-area-inset-bottom))]"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-start justify-between border-b border-stoneborder p-4">
@@ -1896,7 +1902,7 @@ export function RoutineModalsHost({
         onClick={onCloseRoutine}
       >
         <div
-          className="w-full max-w-[430px] max-h-[90dvh] flex flex-col rounded-t-3xl sm:rounded-3xl border border-stoneborder bg-background shadow-2xl animate-fade-up pb-[max(1rem,env(safe-area-inset-bottom))]"
+          className="w-full max-w-[430px] h-[90dvh] max-h-[90dvh] flex flex-col rounded-t-3xl sm:rounded-3xl border border-stoneborder bg-background shadow-2xl animate-fade-up pb-[max(1rem,env(safe-area-inset-bottom))]"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between border-b border-stoneborder p-4">

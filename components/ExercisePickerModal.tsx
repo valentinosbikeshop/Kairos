@@ -124,9 +124,9 @@ export function ExercisePickerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-md">
-      <div className="w-full max-w-[430px] max-h-[85dvh] flex flex-col rounded-t-3xl border-t border-x border-stoneborder bg-surface shadow-2xl animate-fade-up pb-[env(safe-area-inset-bottom)]">
+      <div className="w-full max-w-[430px] h-[85dvh] max-h-[85dvh] flex flex-col rounded-t-3xl border-t border-x border-stoneborder bg-surface shadow-2xl animate-fade-up pb-[env(safe-area-inset-bottom)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-stoneborder px-5 py-3.5">
+        <div className="shrink-0 flex items-center justify-between border-b border-stoneborder px-5 py-3.5">
           <div>
             <span className="text-[11px] text-gothic">{meta.label}</span>
             <h3 className="font-gothic text-sm font-semibold text-brand">Elegir Ejercicio</h3>
@@ -142,7 +142,7 @@ export function ExercisePickerModal({
         </div>
 
         {/* Search Input */}
-        <div className="p-4 space-y-2.5 border-b border-stoneborder">
+        <div className="shrink-0 p-4 space-y-2.5 border-b border-stoneborder">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-subtle" />
             <input
@@ -357,6 +357,22 @@ export function ExercisePickerModal({
               </div>
             );
           })}
+
+          {matches.length === 0 && (
+            <div className="py-12 px-4 text-center space-y-2">
+              <Search className="h-6 w-6 text-brand-subtle opacity-40 mx-auto" />
+              <p className="text-xs font-semibold text-brand">
+                {trimmedQuery
+                  ? `Sin sugerencias directas para «${trimmedQuery}»`
+                  : 'Escribe para buscar o añadir ejercicios'}
+              </p>
+              <p className="text-[11px] text-brand-muted max-w-xs mx-auto leading-relaxed">
+                {trimmedQuery
+                  ? 'Puedes añadirlo como ejercicio nuevo con el botón de IA superior para investigar su perfil muscular y fatiga.'
+                  : 'Filtra por nombre o variante para ver la biblioteca completa.'}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

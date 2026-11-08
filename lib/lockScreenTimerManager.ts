@@ -1,181 +1,51 @@
 import { formatMmSs } from '@/lib/formatters';
+import { kairosAudio } from '@/lib/audioEngine';
 
 let backgroundWorker: Worker | null = null;
-let backgroundAudioEl: HTMLAudioElement | null = null;
-let alarmAudioEl: HTMLAudioElement | null = null;
 let activeNotificationRef: Notification | null = null;
 
-let cachedSilentWavUri: string | null = null;
-let cachedAlarmChimeUri: string | null = null;
-
 /**
- * Sintetiza un archivo PCM WAV estricto en memoria codificado en Data URI base64.
- * Generado en microsegundos de forma 100% nativa sin descargas externas.
- */
-function buildWavDataUri(
-  tones: { freq: number; startSec: number; durSec: number; amp: number }[],
-  totalSec: number,
-  sampleRate = 22050
-): string {
-  const numSamples = Math.max(1, Math.floor(sampleRate * totalSec));
-  const buffer = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(buffer);
-
-  const writeStr = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
-  };
-
-  writeStr(0, 'RIFF');
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeStr(8, 'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM format
-  view.setUint16(22, 1, true); // Mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true); // Block align
-  view.setUint16(34, 16, true); // Bits per sample
-  writeStr(36, 'data');
-  view.setUint32(40, numSamples * 2, true);
-
-  for (let i = 0; i < numSamples; i++) {
-    const t = i / sampleRate;
-    let s = 0;
-    for (const tone of tones) {
-      if (t >= tone.startSec && t <= tone.startSec + tone.durSec) {
-        const localT = t - tone.startSec;
-        const attack = Math.min(1, localT / 0.005);
-        const decay = Math.exp((-2.8 * localT) / tone.durSec);
-        s += Math.sin(2 * Math.PI * tone.freq * localT) * tone.amp * attack * decay;
-      }
-    }
-    const val = Math.max(-0.95, Math.min(0.95, s));
-    view.setInt16(44 + i * 2, Math.round(val * 32767), true);
-  }
-
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return `data:audio/wav;base64,${typeof btoa === 'function' ? btoa(binary) : ''}`;
-}
-
-/**
- * Pista de silencio estricto (1.2 segundos). Al reproducirse en bucle continuo,
- * mantiene el hilo de JavaScript y el subsistema de audio de iOS Safari y Android activos
- * incluso cuando la pantalla se bloquea o el usuario cambia de app.
- */
-function getSilentWavDataUri(): string {
-  if (!cachedSilentWavUri) {
-    cachedSilentWavUri = buildWavDataUri([], 1.2, 11025);
-  }
-  return cachedSilentWavUri;
-}
-
-/**
- * Alarma acústica penetrante de alta fidelidad:
- * 2 ráfagas de acorde armónico triple (880Hz + 1174Hz + 1760Hz).
- * Reproducida directamente a través de HTMLAudioElement para sonar con pantalla bloqueada
- * rompiendo cualquier suspensión de la API Web Audio.
- */
-function getAlarmChimeDataUri(): string {
-  if (!cachedAlarmChimeUri) {
-    cachedAlarmChimeUri = buildWavDataUri(
-      [
-        // Primera ráfaga ascendente
-        { freq: 880, startSec: 0.0, durSec: 0.22, amp: 0.85 },
-        { freq: 1174.66, startSec: 0.14, durSec: 0.25, amp: 0.9 },
-        { freq: 1760, startSec: 0.3, durSec: 0.45, amp: 0.95 },
-        // Segunda ráfaga de confirmación
-        { freq: 880, startSec: 0.65, durSec: 0.22, amp: 0.85 },
-        { freq: 1174.66, startSec: 0.79, durSec: 0.25, amp: 0.9 },
-        { freq: 1760, startSec: 0.95, durSec: 0.6, amp: 0.98 },
-      ],
-      1.65,
-      22050
-    );
-  }
-  return cachedAlarmChimeUri;
-}
-
-/**
- * Inicia o mantiene la pista silenciosa en segundo plano para habilitar ejecución
- * continua de timers y audio en la pantalla de bloqueo de iOS y Android.
+ * Mantiene la sesión en categoría 'ambient' de Web Audio API mientras un timer esté corriendo.
+ * 
+ * GARANTÍA ABSOLUTA DE NO-INTERRUPCIÓN (APPLE MUSIC / SPOTIFY):
+ * Queda estrictamente prohibido usar elementos <audio> (HTMLAudioElement) para bucles en segundo plano.
+ * En iOS Safari y Android, cualquier elemento <audio> que intente reproducirse reclama foco multimedia
+ * primario y PAUSA forzosamente aplicaciones externas como Spotify o Apple Music.
+ * 
+ * En su lugar, KAIROS utiliza Web Audio API en categoría permanente 'ambient' con un keep-alive inaudible (-100dB).
+ * Esto garantiza que la música del usuario NUNCA se pause, NUNCA se interrumpa y NUNCA se corte.
  */
 export function startSilentBackgroundAudio(): void {
   if (typeof window === 'undefined') return;
   try {
-    const silentUri = getSilentWavDataUri();
-    if (!backgroundAudioEl) {
-      backgroundAudioEl = new Audio();
-      backgroundAudioEl.loop = true;
-      backgroundAudioEl.preload = 'auto';
-    }
-    if (backgroundAudioEl.src !== silentUri) {
-      backgroundAudioEl.src = silentUri;
-    }
-    // Volumen mínimo para mantener el bus de hardware abierto sin estorbar
-    backgroundAudioEl.volume = 0.01;
-
-    if (backgroundAudioEl.paused) {
-      void backgroundAudioEl.play().catch(() => {
-        // En navegadores estrictos requiere un gesto del usuario; se invoca desde clics
-      });
-    }
-
-    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-      try {
-        navigator.mediaSession.playbackState = 'playing';
-      } catch {
-        // Ignore
-      }
-    }
+    kairosAudio.setKeepAlive(true);
   } catch {
-    // Ignore audio loop exceptions
+    // Ignore
   }
 }
 
 export function stopSilentBackgroundAudio(): void {
-  if (backgroundAudioEl) {
-    try {
-      backgroundAudioEl.pause();
-      backgroundAudioEl.currentTime = 0;
-    } catch {
-      // Ignore
-    }
-  }
-  if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-    try {
-      navigator.mediaSession.playbackState = 'paused';
-    } catch {
-      // Ignore
-    }
+  if (typeof window === 'undefined') return;
+  try {
+    kairosAudio.setKeepAlive(false);
+  } catch {
+    // Ignore
   }
 }
 
 /**
- * Dispara la alarma sonora de alta prioridad en la pantalla de bloqueo.
- * Utiliza HTMLAudioElement directo + vibración háptica reforzada.
+ * Dispara la señal acústica y háptica de alarma respetando al 100% la música del usuario.
+ * - Utiliza síntesis Web Audio en categoría 'ambient' procesada por el Dynamics Compressor.
+ * - Corta nítidamente sobre Spotify/Apple Music sin pausar la canción.
+ * - Activa vibración háptica reforzada en el dispositivo.
  */
 export function playLockScreenAlarmAudio(): void {
   if (typeof window === 'undefined') return;
   try {
-    const chimeUri = getAlarmChimeDataUri();
-    if (!alarmAudioEl) {
-      alarmAudioEl = new Audio();
-      alarmAudioEl.preload = 'auto';
-    }
-    alarmAudioEl.src = chimeUri;
-    alarmAudioEl.volume = 1.0;
-    void alarmAudioEl.play().catch(() => {
-      // Fallback
-    });
+    // 1. Síntesis acústica enriquecida en modo ambient (mezcla limpia sobre la música sin pausas)
+    kairosAudio.playCompletionCue('finish');
 
+    // 2. Patrón de vibración háptica de alta prioridad
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate([400, 150, 400, 150, 600, 200, 800]);
@@ -184,13 +54,14 @@ export function playLockScreenAlarmAudio(): void {
       }
     }
   } catch {
-    // Ignore audio playback errors
+    // Ignore
   }
 }
 
 /**
  * Reloj de alta precisión en Web Worker con soporte de alarma exacta programada.
- * Los Web Workers corren en un hilo paralelo que no es suspendido mientras el audio esté activo.
+ * Los Web Workers corren en un hilo paralelo que no interfiere con el foco de audio
+ * y no pausa ninguna aplicación externa.
  */
 export function startBackgroundWorkerClock(onTick: () => void, targetEndTimeMs?: number): () => void {
   if (typeof window === 'undefined') return () => undefined;
@@ -278,8 +149,8 @@ export function stopBackgroundWorkerClock(): void {
 }
 
 /**
- * Actualiza el Widget Nativo de Pantalla de Bloqueo (Media Session API).
- * Permite ver la cuenta atrás, pausar, reanudar o saltar desde la pantalla de bloqueo de iOS/Android.
+ * Actualiza el Widget de Pantalla de Bloqueo (Media Session API).
+ * Diseñado pasivamente para no competir con el widget de Spotify o Apple Music.
  */
 export function updateLockScreenMediaSession(params: {
   title: string;
@@ -318,19 +189,6 @@ export function updateLockScreenMediaSession(params: {
         // Ignore setPositionState boundary errors
       }
     }
-
-    if (params.onTogglePlayPause) {
-      navigator.mediaSession.setActionHandler('play', params.onTogglePlayPause);
-      navigator.mediaSession.setActionHandler('pause', params.onTogglePlayPause);
-    }
-    if (params.onSkip) {
-      navigator.mediaSession.setActionHandler('nexttrack', params.onSkip);
-      navigator.mediaSession.setActionHandler('stop', params.onSkip);
-    }
-    if (params.onAddSeconds) {
-      navigator.mediaSession.setActionHandler('seekforward', () => params.onAddSeconds?.(15));
-      navigator.mediaSession.setActionHandler('seekbackward', () => params.onAddSeconds?.(-15));
-    }
   } catch {
     // Ignore mediaSession exceptions
   }
@@ -340,12 +198,6 @@ export function clearLockScreenMediaSession(): void {
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
   try {
     navigator.mediaSession.metadata = null;
-    navigator.mediaSession.setActionHandler('play', null);
-    navigator.mediaSession.setActionHandler('pause', null);
-    navigator.mediaSession.setActionHandler('nexttrack', null);
-    navigator.mediaSession.setActionHandler('stop', null);
-    navigator.mediaSession.setActionHandler('seekforward', null);
-    navigator.mediaSession.setActionHandler('seekbackward', null);
   } catch {
     // Ignore
   }
@@ -373,8 +225,8 @@ export async function requestLockNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * Emite una notificación urgente a la pantalla de bloqueo.
- * Con isFinished=true se activa con prioridad máxima, sonido y vibración.
+ * Emite una notificación urgente a la pantalla de bloqueo sin interrumpir la música.
+ * Con isFinished=true se activa con vibración y banner prioritario.
  */
 export async function emitLockScreenTimerNotification(params: {
   title: string;

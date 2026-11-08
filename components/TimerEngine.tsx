@@ -364,11 +364,8 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
       isRunningRef.current = false;
       isActiveRef.current = false;
 
-      // 1. Alarma nativa de alta prioridad vía HTML5 Audio (suena con pantalla bloqueada y fuera de la app)
+      // 1. Alarma acústica enriquecida en modo ambient + vibración (100% libre de pausas para Spotify/Apple Music)
       playLockScreenAlarmAudio();
-
-      // 2. Síntesis Web Audio enriquecida
-      kairosAudio.playCompletionCue('finish');
 
       emitTimerConclusion('completed', accMs);
 

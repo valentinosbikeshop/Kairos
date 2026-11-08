@@ -43,7 +43,7 @@ function KairosInnerWorkspace() {
   } = useKairos();
 
   const { snapshot } = useTimerEngine();
-  const { deviceConnected, isSimulating } = useHeartRateTelemetry();
+  const { deviceConnected } = useHeartRateTelemetry();
 
   // Reset scroll to top on tab change so header is never cut off
   React.useEffect(() => {
@@ -59,7 +59,7 @@ function KairosInnerWorkspace() {
     dot?: boolean;
   }[] = [
     { id: 'workout', label: 'Entrenar', icon: Dumbbell },
-    { id: 'timer', label: 'Timer', icon: Timer, dot: snapshot.isActive || deviceConnected || isSimulating },
+    { id: 'timer', label: 'Timer', icon: Timer, dot: snapshot.isActive || deviceConnected },
     { id: 'science', label: 'Ciencia', icon: BookOpen },
     { id: 'analytics', label: 'Análisis', icon: Activity },
     { id: 'history', label: 'Historial', icon: CalendarClock },

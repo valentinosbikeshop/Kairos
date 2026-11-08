@@ -25,15 +25,12 @@ import {
   Flame,
   Heart,
   Bluetooth,
-  Sliders,
   X,
   AlertTriangle,
   RefreshCw,
   Watch,
   Sparkles,
   HelpCircle,
-  Copy,
-  Check,
 } from 'lucide-react';
 
 interface HeartRateMonitorWidgetProps {
@@ -54,10 +51,6 @@ interface HeartRateTelemetryContextValue {
   scanMode: 'standard' | 'extended';
   setScanMode: (mode: 'standard' | 'extended') => void;
   bpm: number;
-  isSimulating: boolean;
-  setIsSimulating: React.Dispatch<React.SetStateAction<boolean>>;
-  simulationBpm: number;
-  setSimulationBpm: (val: number) => void;
   accumulatedCalories: number;
   activeSeconds: number;
   zonesProfile: CardioZonesProfile;
@@ -94,9 +87,7 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
   const [showIosModal, setShowIosModal] = useState(false);
   const [showNotFoundHelp, setShowNotFoundHelp] = useState(false);
 
-  const [bpm, setBpm] = useState<number>(128);
-  const [isSimulating, setIsSimulating] = useState<boolean>(false);
-  const [simulationBpm, setSimulationBpm] = useState<number>(135);
+  const [bpm, setBpm] = useState<number>(0);
 
   const [accumulatedCalories, setAccumulatedCalories] = useState<number>(0);
   const [activeSeconds, setActiveSeconds] = useState<number>(0);
@@ -141,20 +132,21 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
   }, [deviceName]);
 
   const activeZone = useMemo(() => {
-    return getZoneForHeartRate(bpm, zonesProfile);
+    return getZoneForHeartRate(bpm > 0 ? bpm : zonesProfile.restingHeartRate, zonesProfile);
   }, [bpm, zonesProfile]);
 
   const instantKcalPerMin = useMemo(() => {
+    if (!deviceConnected || bpm <= 0) return 0;
     return calculateKeytelCaloriesPerMinute({
       heartRate: bpm,
       weightKg,
       age,
       sex,
     });
-  }, [bpm, weightKg, age, sex]);
+  }, [deviceConnected, bpm, weightKg, age, sex]);
 
   useEffect(() => {
-    if (!deviceConnected && !isSimulating) return;
+    if (!deviceConnected || bpm <= 0) return;
 
     const interval = setInterval(() => {
       setActiveSeconds((prev) => prev + 1);
@@ -165,17 +157,12 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [deviceConnected, isSimulating, instantKcalPerMin]);
-
-  useEffect(() => {
-    if (isSimulating) {
-      setBpm(simulationBpm);
-    }
-  }, [isSimulating, simulationBpm]);
+  }, [deviceConnected, bpm, instantKcalPerMin]);
 
   const onDisconnected = useCallback(() => {
     setDeviceConnected(false);
     setDeviceName(null);
+    setBpm(0);
   }, []);
 
   const handleHeartRateCharacteristicValueChanged = useCallback((event: any) => {
@@ -194,7 +181,7 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
       if (typeof window === 'undefined' || !(navigator as any).bluetooth) {
         setShowIosModal(true);
         setBleError(
-          'Web Bluetooth no está habilitado en Safari de iPhone directamente. Usa la app gratuita Bluefy o activa el Modo Simulación.'
+          'Web Bluetooth no está habilitado en este navegador de iOS (Apple restringe el acceso Bluetooth en la web).'
         );
         return;
       }
@@ -308,7 +295,6 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
         );
 
         setDeviceConnected(true);
-        setIsSimulating(false);
         setIsConnecting(false);
         setShowNotFoundHelp(false);
         setShowIosModal(false);
@@ -335,6 +321,7 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
     } catch {}
     setDeviceConnected(false);
     setDeviceName(null);
+    setBpm(0);
   }, []);
 
   const resetCalories = useCallback(() => {
@@ -343,8 +330,9 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
   }, []);
 
   const pulseDurationSec = useMemo(() => {
+    if (!deviceConnected || bpm <= 0) return 0;
     return Math.max(0.3, Math.min(2.0, 60 / Math.max(40, bpm)));
-  }, [bpm]);
+  }, [deviceConnected, bpm]);
 
   const value = useMemo<HeartRateTelemetryContextValue>(
     () => ({
@@ -357,10 +345,6 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
       scanMode,
       setScanMode,
       bpm,
-      isSimulating,
-      setIsSimulating,
-      simulationBpm,
-      setSimulationBpm,
       accumulatedCalories,
       activeSeconds,
       zonesProfile,
@@ -383,8 +367,6 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
       bleError,
       scanMode,
       bpm,
-      isSimulating,
-      simulationBpm,
       accumulatedCalories,
       activeSeconds,
       zonesProfile,
@@ -416,13 +398,12 @@ export function useHeartRateTelemetry() {
 
 /**
  * Barra flotante permanente (idéntica al HUD del temporizador) que permanece visible en
- * toda la app cuando el reloj del usuario está conectado exitosamente (o en simulación).
+ * toda la app cuando el reloj del usuario está conectado exitosamente.
  * Muestra: Pulsaciones en vivo (BPM), Fase actual (1..5) y Calorías quemadas acumuladas.
  */
 export function FloatingHeartRateHUD() {
   const {
     deviceConnected,
-    isSimulating,
     deviceName,
     detectedBrand,
     bpm,
@@ -434,8 +415,8 @@ export function FloatingHeartRateHUD() {
   const { activeTab, setActiveTab } = useKairos();
   const { snapshot, isDrawerExpanded } = useTimerEngine();
 
-  // Solo aparece permanentemente cuando el reloj está conectado (o simulando activamente)
-  if (!deviceConnected && !isSimulating) {
+  // Solo aparece permanentemente cuando el reloj está conectado activamente
+  if (!deviceConnected) {
     return null;
   }
 
@@ -523,10 +504,6 @@ export function HeartRateMonitorWidget({
     bleError,
     setBleError,
     bpm,
-    isSimulating,
-    setIsSimulating,
-    simulationBpm,
-    setSimulationBpm,
     accumulatedCalories,
     zonesProfile,
     activeZone,
@@ -542,17 +519,6 @@ export function HeartRateMonitorWidget({
 
   const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
   const [activeGuideTab, setActiveGuideTab] = useState<BrandTab>('huawei');
-  const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
-
-  const handleCopyKairosUrl = () => {
-    try {
-      if (typeof window !== 'undefined' && navigator.clipboard) {
-        navigator.clipboard.writeText(window.location.href);
-        setCopiedUrl(true);
-        setTimeout(() => setCopiedUrl(false), 2500);
-      }
-    } catch {}
-  };
 
   useEffect(() => {
     if (onBpmChange) {
@@ -665,7 +631,7 @@ export function HeartRateMonitorWidget({
                     Bluetooth en iPhone (iOS)
                   </h3>
                   <p className="text-[10px] text-brand-muted">
-                    Restricción del sistema operativo Safari de Apple
+                    Políticas de seguridad del sistema operativo Apple
                   </p>
                 </div>
               </div>
@@ -679,68 +645,37 @@ export function HeartRateMonitorWidget({
             </div>
 
             <div className="space-y-3 text-xs leading-relaxed">
-              <p className="text-brand-muted">
-                Apple no permite conexiones Web Bluetooth directas dentro de <strong className="text-brand">Safari regular</strong>. Para vincular tu Huawei Band 11 en iPhone tienes 2 opciones rápidas:
-              </p>
-
-              {/* Opción 1: Bluefy */}
-              <div className="rounded-2xl border border-sky-500/40 bg-sky-500/10 p-3.5 space-y-2.5">
-                <div className="flex items-center gap-2 text-sky-300 font-semibold text-xs">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/20 text-sky-200 text-[11px] font-bold">1</span>
-                  <span>Usa la app gratuita Bluefy (Recomendado)</span>
-                </div>
-                <p className="text-[11px] text-brand-muted leading-relaxed">
-                  Descarga <strong>Bluefy - Web BLE Browser</strong> en tu iPhone desde App Store. Abre KAIROS desde Bluefy y podrás conectar tu Huawei Band 11 directamente.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleCopyKairosUrl}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-sky-500/50 bg-sky-500/20 py-2.5 px-3 text-xs font-semibold text-sky-200 hover:bg-sky-500/30 active:scale-95 transition-all shadow-sm"
-                >
-                  {copiedUrl ? (
-                    <>
-                      <Check className="h-4 w-4 text-emerald-400" />
-                      <span className="text-emerald-300">¡Enlace Copiado! Pégalo en Bluefy</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-4 w-4 text-sky-400" />
-                      <span>Copiar Enlace de KAIROS para Bluefy</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Opción 2: Modo Simulación con 1 toque */}
               <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
-                <div className="flex items-center gap-2 text-brand font-semibold text-xs">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">2</span>
-                  <span>O activa Modo Simulación de Pulsaciones</span>
-                </div>
-                <p className="text-[11px] text-brand-muted leading-relaxed">
-                  Prueba de inmediato todas las zonas cardíacas, pulsaciones y cálculo metabólico de calorías sin hardware físico.
+                <p className="font-semibold text-brand text-xs">
+                  ¿Por qué no se abre el selector de Bluetooth en iPhone?
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSimulating(true);
-                    setShowIosModal(false);
-                  }}
-                  className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-gothic/20 border border-gothic/40 py-2 text-xs font-semibold text-brand hover:bg-gothic/30 active:scale-95 transition-all"
-                >
-                  <Sparkles className="h-3.5 w-3.5 text-gothic" />
-                  <span>Activar Modo Simulación con 1 Toque</span>
-                </button>
+                <p className="text-[11px] text-brand-muted leading-relaxed">
+                  Por directiva de Apple, el sistema operativo iOS restringe la tecnología <strong>Web Bluetooth</strong> en todos los navegadores web móviles (Safari, Chrome o Edge para iOS). No existe una opción en los ajustes del iPhone para activarlo en la web.
+                </p>
               </div>
+
+              <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 p-3.5 space-y-2">
+                <p className="font-semibold text-sky-200 text-xs">
+                  Plataformas con vinculación Bluetooth directa:
+                </p>
+                <ul className="text-[11px] text-brand-muted space-y-1.5 list-disc list-inside">
+                  <li><strong>Teléfonos Android:</strong> Google Chrome, Microsoft Edge, Brave o Samsung Internet (Soporte nativo 100%).</li>
+                  <li><strong>Computadoras PC o Mac:</strong> Google Chrome o Microsoft Edge.</li>
+                </ul>
+              </div>
+
+              <p className="text-[10px] text-brand-muted italic">
+                Nota: Todo tu historial, progresos y rutinas de KAIROS se mantienen 100% sincronizados en tu cuenta entre todos tus dispositivos.
+              </p>
             </div>
 
             <div className="pt-2 border-t border-stoneborder/70 flex justify-end">
               <button
                 type="button"
                 onClick={() => setShowIosModal(false)}
-                className="rounded-xl border border-stoneborder bg-background px-4 py-2 text-xs font-semibold text-brand hover:border-gothic/60"
+                className="rounded-xl bg-brand text-background font-bold px-5 py-2 text-xs uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all"
               >
-                Cerrar
+                Entendido
               </button>
             </div>
           </div>
@@ -857,20 +792,28 @@ export function HeartRateMonitorWidget({
             <span className="text-[10px] font-medium uppercase tracking-wider text-brand-muted">
               Pulsaciones
             </span>
-            <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${activeZone.badgeBg}`}>
-              {activeZone.shortName}
+            <span
+              className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${
+                deviceConnected && bpm > 0
+                  ? activeZone.badgeBg
+                  : 'border-stoneborder text-brand-muted bg-stoneborder/20'
+              }`}
+            >
+              {deviceConnected && bpm > 0 ? activeZone.shortName : 'Sin Reloj'}
             </span>
           </div>
 
           <div className="flex items-baseline gap-1.5 pt-1">
             <span className="font-mono text-3xl sm:text-4xl font-bold tabular-nums text-brand tracking-tight">
-              {bpm}
+              {deviceConnected && bpm > 0 ? bpm : '--'}
             </span>
             <span className="text-xs font-mono font-medium text-brand-muted">BPM</span>
           </div>
 
           <div className="pt-1 text-[10px] text-brand-muted truncate">
-            {activeZone.name.split('·')[1]?.trim() || activeZone.name}
+            {deviceConnected && bpm > 0
+              ? activeZone.name.split('·')[1]?.trim() || activeZone.name
+              : 'Dispositivo no vinculado'}
           </div>
         </div>
 
@@ -891,7 +834,9 @@ export function HeartRateMonitorWidget({
           </div>
 
           <div className="pt-1 text-[10px] text-amber-400 font-mono tabular-nums">
-            {instantKcalPerMin.toFixed(1)} kcal/min
+            {deviceConnected && bpm > 0
+              ? `${instantKcalPerMin.toFixed(1)} kcal/min`
+              : '0.0 kcal/min'}
           </div>
         </div>
       </div>
@@ -900,13 +845,15 @@ export function HeartRateMonitorWidget({
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-[10px] font-medium text-brand-muted">
           <span>Espectro Fisiológico</span>
-          <span className="font-mono text-brand">{activeZone.rangePct} HRmax</span>
+          <span className="font-mono text-brand">
+            {deviceConnected && bpm > 0 ? `${activeZone.rangePct} HRmax` : 'En reposo'}
+          </span>
         </div>
 
         <div className="grid grid-cols-5 gap-1 h-2 rounded-full overflow-hidden bg-background p-0.5 border border-stoneborder/60">
           {([1, 2, 3, 4, 5] as CardioZoneNumber[]).map((zoneNum) => {
             const zInfo = zonesProfile.zones[zoneNum];
-            const isCurrent = activeZone.zone === zoneNum;
+            const isCurrent = deviceConnected && bpm > 0 && activeZone.zone === zoneNum;
             return (
               <div
                 key={zoneNum}
@@ -934,62 +881,26 @@ export function HeartRateMonitorWidget({
       </div>
 
       {/* Target physiological explanation pill */}
-      <div className={`rounded-xl border p-2.5 text-[11px] leading-relaxed ${activeZone.badgeBg}`}>
+      <div
+        className={`rounded-xl border p-2.5 text-[11px] leading-relaxed ${
+          deviceConnected && bpm > 0 ? activeZone.badgeBg : 'border-stoneborder/60 bg-surface/50'
+        }`}
+      >
         <div className="flex items-start gap-1.5">
           <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-current opacity-80" />
           <div className="space-y-0.5">
-            <p className="font-medium text-brand">{activeZone.metabolicTarget}</p>
-            <p className="text-[10px] opacity-80">{activeZone.perceivedEffort}</p>
+            <p className="font-medium text-brand">
+              {deviceConnected && bpm > 0
+                ? activeZone.metabolicTarget
+                : 'Monitoreo cardiovascular de precisión'}
+            </p>
+            <p className="text-[10px] opacity-80">
+              {deviceConnected && bpm > 0
+                ? activeZone.perceivedEffort
+                : 'Conecta tu Huawei Band 11 u otro pulsómetro para medir zonas metabólicas y gasto calórico en vivo.'}
+            </p>
           </div>
         </div>
-      </div>
-
-
-      {/* Simulation / Manual Testing Slider Controls */}
-      <div className="pt-1 border-t border-stoneborder/50">
-        <button
-          type="button"
-          onClick={() => {
-            setIsSimulating((prev) => !prev);
-          }}
-          className="w-full flex items-center justify-between text-[11px] text-brand-muted hover:text-brand transition-colors py-1"
-        >
-          <span className="flex items-center gap-1.5">
-            <Sliders className="h-3 w-3 text-gothic" />
-            <span>Modo Simulación / Probar Fases Manualmente</span>
-          </span>
-          <span
-            className={`font-mono text-[10px] px-1.5 py-0.5 rounded border ${
-              isSimulating
-                ? 'border-gothic/50 bg-gothic/15 text-gothic font-semibold'
-                : 'border-stoneborder text-brand-muted'
-            }`}
-          >
-            {isSimulating ? 'Activo' : 'Inactivo'}
-          </span>
-        </button>
-
-        {isSimulating && (
-          <div className="mt-2 rounded-xl border border-stoneborder bg-background p-3 space-y-2 animate-fade-up">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-brand-muted">Ajustar pulso de prueba:</span>
-              <span className="font-mono font-bold text-brand">{simulationBpm} BPM</span>
-            </div>
-            <input
-              type="range"
-              min={50}
-              max={zonesProfile.maxHeartRate + 10}
-              value={simulationBpm}
-              onChange={(e) => setSimulationBpm(parseInt(e.target.value, 10))}
-              className="w-full accent-rose-500 cursor-pointer"
-            />
-            <div className="flex justify-between text-[9px] text-brand-muted font-mono">
-              <span>50 BPM (Reposo)</span>
-              <span>{Math.round(zonesProfile.maxHeartRate * 0.65)} BPM (Fase 2)</span>
-              <span>{zonesProfile.maxHeartRate} BPM (Máx)</span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Interactive Step-by-Step Device Pairing Wizard Modal */}
@@ -1251,8 +1162,7 @@ export function HeartRateMonitorWidget({
                       ⚠ Teléfonos iPhone (iOS)
                     </span>
                     <p className="text-[11px] text-brand-muted">
-                      Safari en iOS desactiva la conexión Bluetooth web por directiva de Apple.<br />
-                      <strong>Solución:</strong> En iPhone, abre KAIROS desde la app gratuita <strong>Bluefy</strong> (navegador oficial WebBLE del App Store). ¡Con Bluefy funciona el Bluetooth con cualquier reloj en iPhone!
+                      Apple no habilita la API Web Bluetooth en navegadores web en iOS por políticas del sistema operativo. La vinculación directa con relojes opera de fábrica en dispositivos Android, Mac y Windows con Google Chrome o Edge.
                     </p>
                   </div>
                 </div>

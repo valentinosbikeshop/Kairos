@@ -22,6 +22,7 @@ import {
   stopBackgroundWorkerClock,
   startSilentBackgroundAudio,
   stopSilentBackgroundAudio,
+  playLockScreenAlarmAudio,
   updateLockScreenMediaSession,
   clearLockScreenMediaSession,
   emitLockScreenTimerNotification,
@@ -362,6 +363,11 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
     if (foundIdx === -1) {
       isRunningRef.current = false;
       isActiveRef.current = false;
+
+      // 1. Alarma nativa de alta prioridad vía HTML5 Audio (suena con pantalla bloqueada y fuera de la app)
+      playLockScreenAlarmAudio();
+
+      // 2. Síntesis Web Audio enriquecida
       kairosAudio.playCompletionCue('finish');
 
       emitTimerConclusion('completed', accMs);
@@ -465,9 +471,10 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
     let rafId = 0;
 
     if (snapshot.isActive && snapshot.isRunning) {
+      const targetEndTime = Date.now() + snapshot.phaseRemainingMs;
       stopWorker = startBackgroundWorkerClock(() => {
         computeAndSyncState();
-      });
+      }, targetEndTime);
       startSilentBackgroundAudio();
     } else {
       stopSilentBackgroundAudio();

@@ -61,7 +61,7 @@ interface HeartRateTelemetryContextValue {
   activeZone: CardioZone;
   instantKcalPerMin: number;
   pulseDurationSec: number;
-  connectBluetoothHeartRate: (forceExtended?: boolean) => Promise<void>;
+  connectBluetoothHeartRate: (target?: 'standard' | 'huawei' | 'extended' | boolean) => Promise<void>;
   disconnectBluetooth: () => void;
   resetCalories: () => void;
 }
@@ -99,20 +99,28 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
     if (!deviceName) return null;
     const lower = deviceName.toLowerCase();
     if (
+      lower.includes('huawei') ||
+      lower.includes('honor') ||
+      lower.includes('band 11') ||
+      lower.includes('band 10') ||
+      lower.includes('band 9') ||
+      lower.includes('band 8') ||
+      lower.includes('watch gt') ||
+      lower.includes('fit')
+    ) {
+      if (lower.includes('11')) return 'Huawei Band 11';
+      if (lower.includes('10')) return 'Huawei Band 10';
+      if (lower.includes('9')) return 'Huawei Band 9';
+      if (lower.includes('8')) return 'Huawei Band 8';
+      return 'Huawei Smart Band';
+    }
+    if (
       lower.includes('xiaomi') ||
       lower.includes('mi ') ||
       lower.includes('redmi') ||
       lower.includes('smart band')
     ) {
       return 'Xiaomi / Redmi';
-    }
-    if (
-      lower.includes('huawei') ||
-      lower.includes('honor') ||
-      lower.includes('watch gt') ||
-      lower.includes('fit')
-    ) {
-      return 'Huawei';
     }
     if (lower.includes('apple') || lower.includes('heartcast') || lower.includes('echo')) {
       return 'Apple Watch';
@@ -170,7 +178,7 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
   }, []);
 
   const connectBluetoothHeartRate = useCallback(
-    async (forceExtended = false) => {
+    async (target: 'standard' | 'huawei' | 'extended' | boolean = 'standard') => {
       setBleError(null);
 
       if (typeof window === 'undefined' || !(navigator as any).bluetooth) {
@@ -183,43 +191,75 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
       try {
         setIsConnecting(true);
 
-        const standardOptions = {
-          filters: [
-            { services: ['heart_rate'] },
-            { namePrefix: 'Mi ' },
-            { namePrefix: 'Xiaomi' },
-            { namePrefix: 'Redmi' },
-            { namePrefix: 'HUAWEI' },
-            { namePrefix: 'HONOR' },
-            { namePrefix: 'Band' },
-            { namePrefix: 'Watch' },
-            { namePrefix: 'Polar' },
-            { namePrefix: 'Garmin' },
-            { namePrefix: 'Heart' },
-            { namePrefix: 'Echo' },
-          ],
-          optionalServices: [
-            'heart_rate',
-            'battery_service',
-            'device_information',
-            0x180d,
-            '0000180d-0000-1000-8000-00805f9b34fb',
-          ],
-        };
+        const isHuawei = target === 'huawei';
+        const isExtended = target === true || target === 'extended' || scanMode === 'extended';
 
-        const extendedOptions = {
-          acceptAllDevices: true,
-          optionalServices: [
-            'heart_rate',
-            'battery_service',
-            'device_information',
-            0x180d,
-            '0000180d-0000-1000-8000-00805f9b34fb',
-          ],
-        };
+        const standardFilters = [
+          { services: ['heart_rate'] },
+          { namePrefix: 'Huawei' },
+          { namePrefix: 'HUAWEI' },
+          { namePrefix: 'huawei' },
+          { namePrefix: 'Band' },
+          { namePrefix: 'band' },
+          { namePrefix: 'HONOR' },
+          { namePrefix: 'Honor' },
+          { namePrefix: 'Watch' },
+          { namePrefix: 'watch' },
+          { namePrefix: 'FIT' },
+          { namePrefix: 'Fit' },
+          { namePrefix: 'Mi ' },
+          { namePrefix: 'Xiaomi' },
+          { namePrefix: 'Redmi' },
+          { namePrefix: 'Polar' },
+          { namePrefix: 'Garmin' },
+          { namePrefix: 'Heart' },
+          { namePrefix: 'Echo' },
+        ];
 
-        const scanConfig =
-          forceExtended || scanMode === 'extended' ? extendedOptions : standardOptions;
+        const huaweiFilters = [
+          { namePrefix: 'Huawei' },
+          { namePrefix: 'HUAWEI' },
+          { namePrefix: 'huawei' },
+          { namePrefix: 'Band' },
+          { namePrefix: 'band' },
+          { namePrefix: 'Band 11' },
+          { namePrefix: 'HONOR' },
+          { namePrefix: 'Honor' },
+          { namePrefix: 'Watch' },
+          { namePrefix: 'watch' },
+          { namePrefix: 'FIT' },
+          { services: ['heart_rate'] },
+        ];
+
+        const commonOptionalServices = [
+          'heart_rate',
+          'battery_service',
+          'device_information',
+          0x180d,
+          '0000180d-0000-1000-8000-00805f9b34fb',
+          0x3802,
+          '00003802-0000-1000-8000-00805f9b34fb',
+          0xfe95,
+          '0000fe95-0000-1000-8000-00805f9b34fb',
+        ];
+
+        let scanConfig: any;
+        if (isExtended) {
+          scanConfig = {
+            acceptAllDevices: true,
+            optionalServices: commonOptionalServices,
+          };
+        } else if (isHuawei) {
+          scanConfig = {
+            filters: huaweiFilters,
+            optionalServices: commonOptionalServices,
+          };
+        } else {
+          scanConfig = {
+            filters: standardFilters,
+            optionalServices: commonOptionalServices,
+          };
+        }
 
         const device = await (navigator as any).bluetooth.requestDevice(scanConfig);
 
@@ -231,14 +271,46 @@ export function HeartRateTelemetryProvider({ children }: { children: React.React
         const server = await device.gatt.connect();
         gattServerRef.current = server;
 
-        let service;
+        let service: any;
         try {
           service = await server.getPrimaryService('heart_rate');
         } catch {
-          service = await server.getPrimaryService('0000180d-0000-1000-8000-00805f9b34fb');
+          try {
+            service = await server.getPrimaryService('0000180d-0000-1000-8000-00805f9b34fb');
+          } catch {
+            try {
+              service = await server.getPrimaryService(0x180d);
+            } catch {
+              try {
+                const allServices = await server.getPrimaryServices();
+                service = allServices.find((s: any) => {
+                  const u = (s.uuid || '').toLowerCase();
+                  return u.includes('180d') || u.includes('heart');
+                });
+              } catch {
+                // fall through
+              }
+            }
+          }
         }
 
-        const characteristic = await service.getCharacteristic('heart_rate_measurement');
+        if (!service) {
+          throw new Error(
+            'El reloj se conectó por Bluetooth, pero no está emitiendo pulso cardíaco. En tu Huawei Band ve a Ajustes > Frecuencia Cardíaca > "Transmitir FC" (o inicia una sesión de ejercicio y desliza para transmitir).'
+          );
+        }
+
+        let characteristic: any;
+        try {
+          characteristic = await service.getCharacteristic('heart_rate_measurement');
+        } catch {
+          try {
+            characteristic = await service.getCharacteristic('00002a37-0000-1000-8000-00805f9b34fb');
+          } catch {
+            characteristic = await service.getCharacteristic(0x2a37);
+          }
+        }
+
         await characteristic.startNotifications();
         characteristic.addEventListener(
           'characteristicvaluechanged',
@@ -528,19 +600,31 @@ export function HeartRateMonitorWidget({
               <span>{deviceName ?? 'Conectado'}</span>
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => connectBluetoothHeartRate(false)}
-              disabled={isConnecting}
-              className="flex items-center gap-1 rounded-lg border border-stoneborder bg-background px-2.5 py-1 text-[11px] font-medium text-brand hover:border-gothic/50 active:scale-95 transition-all shadow-sm"
-            >
-              {isConnecting ? (
-                <RefreshCw className="h-3 w-3 animate-spin text-gothic" />
-              ) : (
-                <Bluetooth className="h-3 w-3 text-sky-400" />
-              )}
-              <span>{isConnecting ? 'Buscando...' : 'Vincular Reloj'}</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => connectBluetoothHeartRate('huawei')}
+                disabled={isConnecting}
+                className="flex items-center gap-1 rounded-lg border border-sky-500/50 bg-sky-500/15 px-2.5 py-1 text-[11px] font-semibold text-sky-200 hover:bg-sky-500/25 active:scale-95 transition-all shadow-sm"
+                title="Vincular Huawei Band 11 con 1 toque directo"
+              >
+                {isConnecting ? (
+                  <RefreshCw className="h-3 w-3 animate-spin text-sky-400" />
+                ) : (
+                  <Bluetooth className="h-3 w-3 text-sky-400" />
+                )}
+                <span>Huawei Band 11</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => connectBluetoothHeartRate('standard')}
+                disabled={isConnecting}
+                className="flex items-center gap-1 rounded-lg border border-stoneborder bg-background px-2 py-1 text-[11px] font-medium text-brand hover:border-gothic/50 active:scale-95 transition-all shadow-sm"
+              >
+                <span>Otro</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -740,7 +824,7 @@ export function HeartRateMonitorWidget({
               {(
                 [
                   { id: 'xiaomi', label: 'Xiaomi / Redmi' },
-                  { id: 'huawei', label: 'Huawei / Honor' },
+                  { id: 'huawei', label: 'Huawei Band 11' },
                   { id: 'apple', label: 'Apple Watch' },
                   { id: 'garmin', label: 'Garmin / Polar' },
                   { id: 'samsung', label: 'Galaxy Watch' },
@@ -799,38 +883,63 @@ export function HeartRateMonitorWidget({
                 </div>
               )}
 
-              {/* HUAWEI & HONOR */}
+              {/* HUAWEI BAND 11 & HUAWEI SMART BANDS */}
               {activeGuideTab === 'huawei' && (
                 <div className="space-y-3 animate-fade-up">
-                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
-                    <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">1</span>
-                      En tu Huawei Smart Band (En vivo en pantalla)
-                    </span>
-                    <p className="text-[11px] text-brand-muted">
-                      En la pantalla táctil de la pulsera, desliza y entra en <strong>Ajustes ⚙️</strong> → <strong>Frecuencia Cardíaca</strong> (o <strong>Bluetooth / Sensores</strong>) → Activa <strong>"Transmitir frecuencia cardíaca"</strong> (Broadcast HR).<br />
-                      <em>Alternativa:</em> Al iniciar cualquier sesión de ejercicio en la pulsera, desliza hasta la rueda de ajustes del entrenamiento y activa <strong>"Emitir FC"</strong>.
+                  {/* Badge de Compatibilidad Total */}
+                  <div className="rounded-2xl border border-sky-500/40 bg-sky-500/10 p-3.5 space-y-1.5">
+                    <div className="flex items-center gap-2 text-sky-300 font-semibold text-xs">
+                      <Sparkles className="h-4 w-4 shrink-0 text-sky-400" />
+                      <span>100% Compatible con Huawei Band 11, Band 10, Band 9, Band 8 y Watch FIT</span>
+                    </div>
+                    <p className="text-[11px] text-brand-muted leading-relaxed">
+                      Tu Huawei Band 11 transmite pulsaciones en vivo por Bluetooth Low Energy estándar (GATT Heart Rate). Para conectarla solo necesitas estos 2 pasos rápidos:
                     </p>
                   </div>
 
+                  {/* Paso 1 */}
                   <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
                     <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">2</span>
-                      En la App "Salud de Huawei" (En tu Teléfono)
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/20 text-sky-300 text-[11px] font-bold">1</span>
+                      En tu Huawei Band 11 (Pantalla del reloj)
                     </span>
-                    <p className="text-[11px] text-brand-muted">
-                      Abre la app <strong>Salud de Huawei</strong> → ve a la pestaña <strong>"Yo"</strong> (abajo a la derecha) → entra en <strong>Gestión de privacidad / Servicios de terceros</strong> → Activa la sincronización con <strong>Google Health Connect</strong> (en Android) o <strong>Salud de Apple</strong> (en iPhone).<br />
-                      <em>En Android:</em> Si tu versión de Huawei Health no enlaza directo, instala la app gratuita <strong>Health Sync</strong> para puentear los datos de Salud de Huawei en tiempo real.
+                    <p className="text-[11px] text-brand-muted leading-relaxed">
+                      Desliza en la pantalla y entra en <strong>Ajustes ⚙️</strong> → <strong>Frecuencia Cardíaca</strong> → Activa <strong>&quot;Transmitir frecuencia cardíaca&quot;</strong> (Broadcast HR).
                     </p>
+                    <div className="rounded-xl border border-stoneborder/70 bg-surface/50 p-2.5 text-[10px] text-brand-muted leading-snug">
+                      💡 <em>Atajo instantáneo al entrenar:</em> Al iniciar cualquier sesión de ejercicio en la pulsera (Fuerza o Carrera), desliza la pantalla hacia la derecha y toca <strong>&quot;Emitir FC&quot;</strong>. La pulsera mostrará un corazón parpadeando.
+                    </div>
                   </div>
 
-                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2">
+                  {/* Paso 2 */}
+                  <div className="rounded-2xl border border-stoneborder bg-background p-3.5 space-y-2.5">
                     <span className="font-semibold text-brand text-xs flex items-center gap-1.5">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gothic/20 text-gothic text-[11px] font-bold">3</span>
-                      Conectar en KAIROS
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/20 text-sky-300 text-[11px] font-bold">2</span>
+                      Toca &quot;Vincular Huawei Band 11&quot; en KAIROS
                     </span>
-                    <p className="text-[11px] text-brand-muted">
-                      Vuelve a KAIROS, pulsa <strong>"Vincular Reloj"</strong> (o <em>"Búsqueda Ampliada"</em> si tu modelo usa nombre personalizado) y selecciona tu pulsera Huawei. Empezará a medir tus pulsaciones y gasto calórico al instante.
+                    <p className="text-[11px] text-brand-muted leading-relaxed">
+                      Toca el botón azul aquí abajo. Tu navegador abrirá la lista de dispositivos Bluetooth: selecciona tu <strong>HUAWEI Band 11</strong> y ¡listo! Tus pulsaciones y gasto calórico aparecerán en vivo en pantalla.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowGuideModal(false);
+                        void connectBluetoothHeartRate('huawei');
+                      }}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-sky-500/20 border border-sky-500/50 py-2.5 px-3 text-xs font-semibold text-sky-200 hover:bg-sky-500/30 active:scale-95 transition-all shadow-sm"
+                    >
+                      <Bluetooth className="h-4 w-4 text-sky-400" />
+                      <span>Vincular Huawei Band 11 Ahora</span>
+                    </button>
+                  </div>
+
+                  {/* Solución a interferencia con app Salud de Huawei */}
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-1.5">
+                    <span className="font-semibold text-amber-300 text-xs flex items-center gap-1.5">
+                      <span>⚡</span> Tip de 5 segundos si tu pulsera no aparece de inmediato
+                    </span>
+                    <p className="text-[11px] text-brand-muted leading-relaxed">
+                      Si la aplicación <strong>Salud de Huawei</strong> está corriendo en tu teléfono, puede bloquear temporalmente el Bluetooth para uso exclusivo. <strong>Cierra la app Salud de Huawei de la multitarea</strong> o desactiva y vuelve a activar el Bluetooth de tu teléfono durante 3 segundos.
                     </p>
                   </div>
                 </div>

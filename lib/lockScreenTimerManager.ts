@@ -1,18 +1,198 @@
 import { formatMmSs } from '@/lib/formatters';
 
-const SILENT_WAV_DATA_URI =
-  'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
-
 let backgroundWorker: Worker | null = null;
 let backgroundAudioEl: HTMLAudioElement | null = null;
+let alarmAudioEl: HTMLAudioElement | null = null;
 let activeNotificationRef: Notification | null = null;
 
+let cachedSilentWavUri: string | null = null;
+let cachedAlarmChimeUri: string | null = null;
+
 /**
- * Creates an inline Web Worker that fires ticks every 90ms.
- * Web Workers run on a background thread and are NOT throttled or suspended
- * when the screen is locked, ensuring the countdown and beeps fire at the exact millisecond.
+ * Sintetiza un archivo PCM WAV estricto en memoria codificado en Data URI base64.
+ * Generado en microsegundos de forma 100% nativa sin descargas externas.
  */
-export function startBackgroundWorkerClock(onTick: () => void): () => void {
+function buildWavDataUri(
+  tones: { freq: number; startSec: number; durSec: number; amp: number }[],
+  totalSec: number,
+  sampleRate = 22050
+): string {
+  const numSamples = Math.max(1, Math.floor(sampleRate * totalSec));
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
+  };
+
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, 1, true); // Mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true); // Block align
+  view.setUint16(34, 16, true); // Bits per sample
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    let s = 0;
+    for (const tone of tones) {
+      if (t >= tone.startSec && t <= tone.startSec + tone.durSec) {
+        const localT = t - tone.startSec;
+        const attack = Math.min(1, localT / 0.005);
+        const decay = Math.exp((-2.8 * localT) / tone.durSec);
+        s += Math.sin(2 * Math.PI * tone.freq * localT) * tone.amp * attack * decay;
+      }
+    }
+    const val = Math.max(-0.95, Math.min(0.95, s));
+    view.setInt16(44 + i * 2, Math.round(val * 32767), true);
+  }
+
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return `data:audio/wav;base64,${typeof btoa === 'function' ? btoa(binary) : ''}`;
+}
+
+/**
+ * Pista de silencio estricto (1.2 segundos). Al reproducirse en bucle continuo,
+ * mantiene el hilo de JavaScript y el subsistema de audio de iOS Safari y Android activos
+ * incluso cuando la pantalla se bloquea o el usuario cambia de app.
+ */
+function getSilentWavDataUri(): string {
+  if (!cachedSilentWavUri) {
+    cachedSilentWavUri = buildWavDataUri([], 1.2, 11025);
+  }
+  return cachedSilentWavUri;
+}
+
+/**
+ * Alarma acústica penetrante de alta fidelidad:
+ * 2 ráfagas de acorde armónico triple (880Hz + 1174Hz + 1760Hz).
+ * Reproducida directamente a través de HTMLAudioElement para sonar con pantalla bloqueada
+ * rompiendo cualquier suspensión de la API Web Audio.
+ */
+function getAlarmChimeDataUri(): string {
+  if (!cachedAlarmChimeUri) {
+    cachedAlarmChimeUri = buildWavDataUri(
+      [
+        // Primera ráfaga ascendente
+        { freq: 880, startSec: 0.0, durSec: 0.22, amp: 0.85 },
+        { freq: 1174.66, startSec: 0.14, durSec: 0.25, amp: 0.9 },
+        { freq: 1760, startSec: 0.3, durSec: 0.45, amp: 0.95 },
+        // Segunda ráfaga de confirmación
+        { freq: 880, startSec: 0.65, durSec: 0.22, amp: 0.85 },
+        { freq: 1174.66, startSec: 0.79, durSec: 0.25, amp: 0.9 },
+        { freq: 1760, startSec: 0.95, durSec: 0.6, amp: 0.98 },
+      ],
+      1.65,
+      22050
+    );
+  }
+  return cachedAlarmChimeUri;
+}
+
+/**
+ * Inicia o mantiene la pista silenciosa en segundo plano para habilitar ejecución
+ * continua de timers y audio en la pantalla de bloqueo de iOS y Android.
+ */
+export function startSilentBackgroundAudio(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const silentUri = getSilentWavDataUri();
+    if (!backgroundAudioEl) {
+      backgroundAudioEl = new Audio();
+      backgroundAudioEl.loop = true;
+      backgroundAudioEl.preload = 'auto';
+    }
+    if (backgroundAudioEl.src !== silentUri) {
+      backgroundAudioEl.src = silentUri;
+    }
+    // Volumen mínimo para mantener el bus de hardware abierto sin estorbar
+    backgroundAudioEl.volume = 0.01;
+
+    if (backgroundAudioEl.paused) {
+      void backgroundAudioEl.play().catch(() => {
+        // En navegadores estrictos requiere un gesto del usuario; se invoca desde clics
+      });
+    }
+
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.playbackState = 'playing';
+      } catch {
+        // Ignore
+      }
+    }
+  } catch {
+    // Ignore audio loop exceptions
+  }
+}
+
+export function stopSilentBackgroundAudio(): void {
+  if (backgroundAudioEl) {
+    try {
+      backgroundAudioEl.pause();
+      backgroundAudioEl.currentTime = 0;
+    } catch {
+      // Ignore
+    }
+  }
+  if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.playbackState = 'paused';
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
+ * Dispara la alarma sonora de alta prioridad en la pantalla de bloqueo.
+ * Utiliza HTMLAudioElement directo + vibración háptica reforzada.
+ */
+export function playLockScreenAlarmAudio(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const chimeUri = getAlarmChimeDataUri();
+    if (!alarmAudioEl) {
+      alarmAudioEl = new Audio();
+      alarmAudioEl.preload = 'auto';
+    }
+    alarmAudioEl.src = chimeUri;
+    alarmAudioEl.volume = 1.0;
+    void alarmAudioEl.play().catch(() => {
+      // Fallback
+    });
+
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([400, 150, 400, 150, 600, 200, 800]);
+      } catch {
+        // Ignore vibration errors
+      }
+    }
+  } catch {
+    // Ignore audio playback errors
+  }
+}
+
+/**
+ * Reloj de alta precisión en Web Worker con soporte de alarma exacta programada.
+ * Los Web Workers corren en un hilo paralelo que no es suspendido mientras el audio esté activo.
+ */
+export function startBackgroundWorkerClock(onTick: () => void, targetEndTimeMs?: number): () => void {
   if (typeof window === 'undefined') return () => undefined;
 
   stopBackgroundWorkerClock();
@@ -20,16 +200,28 @@ export function startBackgroundWorkerClock(onTick: () => void): () => void {
   try {
     const workerScript = `
       let intervalId = null;
+      let alarmTimeoutId = null;
       self.onmessage = function(e) {
-        if (e.data === 'start') {
+        const data = e.data;
+        if (data === 'start' || (data && data.type === 'start')) {
           if (intervalId) clearInterval(intervalId);
           intervalId = setInterval(function() {
             self.postMessage('tick');
           }, 90);
-        } else if (e.data === 'stop') {
+        } else if (data && data.type === 'scheduleAlarm') {
+          if (alarmTimeoutId) clearTimeout(alarmTimeoutId);
+          const delay = Math.max(0, (data.targetMs || 0) - Date.now());
+          alarmTimeoutId = setTimeout(function() {
+            self.postMessage('alarmTrigger');
+          }, delay);
+        } else if (data === 'stop') {
           if (intervalId) {
             clearInterval(intervalId);
             intervalId = null;
+          }
+          if (alarmTimeoutId) {
+            clearTimeout(alarmTimeoutId);
+            alarmTimeoutId = null;
           }
         }
       };
@@ -40,12 +232,19 @@ export function startBackgroundWorkerClock(onTick: () => void): () => void {
     const worker = new Worker(url);
 
     worker.onmessage = (e) => {
-      if (e.data === 'tick') {
+      if (e.data === 'tick' || e.data === 'alarmTrigger') {
         onTick();
       }
     };
 
     worker.postMessage('start');
+    if (targetEndTimeMs && targetEndTimeMs > Date.now()) {
+      worker.postMessage({
+        type: 'scheduleAlarm',
+        targetMs: targetEndTimeMs,
+      });
+    }
+
     backgroundWorker = worker;
 
     return () => {
@@ -55,7 +254,14 @@ export function startBackgroundWorkerClock(onTick: () => void): () => void {
   } catch {
     // Fallback if Web Workers are restricted by CSP/sandbox
     const id = setInterval(onTick, 90);
-    return () => clearInterval(id);
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    if (targetEndTimeMs && targetEndTimeMs > Date.now()) {
+      timeoutId = setTimeout(onTick, Math.max(0, targetEndTimeMs - Date.now()));
+    }
+    return () => {
+      clearInterval(id);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }
 }
 
@@ -72,29 +278,8 @@ export function stopBackgroundWorkerClock(): void {
 }
 
 /**
- * Mantiene el ciclo de vida del temporizador sin interrumpir la música de fondo
- * (Apple Music, Spotify). NO usamos un elemento <audio> HTML aquí para no robar el foco
- * de audio del sistema operativo iOS/Android.
- */
-export function startSilentBackgroundAudio(): void {
-  // Sin <audio>.play() para garantizar mezcla pura sobre música del usuario sin pausas
-}
-
-export function stopSilentBackgroundAudio(): void {
-  if (backgroundAudioEl) {
-    try {
-      backgroundAudioEl.pause();
-      backgroundAudioEl.currentTime = 0;
-    } catch {
-      // Ignore
-    }
-  }
-}
-
-/**
- * Updates the native Lock Screen Media Widget (Media Session API).
- * Displays a live countdown scrub-bar, phase title, and play/pause/skip controls
- * directly on the iOS / Android lock screen.
+ * Actualiza el Widget Nativo de Pantalla de Bloqueo (Media Session API).
+ * Permite ver la cuenta atrás, pausar, reanudar o saltar desde la pantalla de bloqueo de iOS/Android.
  */
 export function updateLockScreenMediaSession(params: {
   title: string;
@@ -188,9 +373,8 @@ export async function requestLockNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * Emits an urgent notification to the user's lock screen.
- * - While running: Displays a persistent status indicator of the active timer.
- * - When finished: Dispatches an urgent alarm notification with vibration and alert sound.
+ * Emite una notificación urgente a la pantalla de bloqueo.
+ * Con isFinished=true se activa con prioridad máxima, sonido y vibración.
  */
 export async function emitLockScreenTimerNotification(params: {
   title: string;
@@ -205,16 +389,19 @@ export async function emitLockScreenTimerNotification(params: {
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg && reg.showNotification) {
-        await reg.showNotification(params.isFinished ? `🔔 ¡Tiempo Cumplido! — KAIROS` : `⏱️ KAIROS: ${params.title}`, {
-          body: params.body,
-          icon: '/icon',
-          badge: '/icon',
-          tag: 'kairos-active-timer',
-          renotify: Boolean(params.isFinished),
-          requireInteraction: true,
-          silent: !params.isFinished,
-          vibrate: params.isFinished ? [300, 150, 300, 150, 600] : undefined,
-        } as NotificationOptions);
+        await reg.showNotification(
+          params.isFinished ? `🚨 ¡TIEMPO CUMPLIDO! — KAIROS` : `⏱️ KAIROS: ${params.title}`,
+          {
+            body: params.body,
+            icon: '/icon',
+            badge: '/icon',
+            tag: params.isFinished ? 'kairos-timer-finished' : 'kairos-active-timer',
+            renotify: Boolean(params.isFinished),
+            requireInteraction: Boolean(params.isFinished),
+            silent: false,
+            vibrate: params.isFinished ? [400, 150, 400, 150, 600, 200, 800] : undefined,
+          } as NotificationOptions
+        );
         return;
       }
     }
@@ -225,15 +412,15 @@ export async function emitLockScreenTimerNotification(params: {
     }
 
     activeNotificationRef = new Notification(
-      params.isFinished ? `🔔 ¡Tiempo Cumplido! — KAIROS` : `⏱️ KAIROS: ${params.title}`,
+      params.isFinished ? `🚨 ¡TIEMPO CUMPLIDO! — KAIROS` : `⏱️ KAIROS: ${params.title}`,
       {
         body: params.body,
         icon: '/icon',
         badge: '/icon',
-        tag: 'kairos-active-timer',
+        tag: params.isFinished ? 'kairos-timer-finished' : 'kairos-active-timer',
         renotify: Boolean(params.isFinished),
-        requireInteraction: true,
-        silent: !params.isFinished,
+        requireInteraction: Boolean(params.isFinished),
+        silent: false,
       } as NotificationOptions
     );
   } catch {

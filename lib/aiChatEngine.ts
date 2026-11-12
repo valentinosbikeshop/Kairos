@@ -815,7 +815,7 @@ export async function generateScientificAiResponse(
 
   // 1. LIMPIEZA INTELIGENTE Y EXTRACCIÓN DE NOMBRES/CARGAS DE RUTINA
   const isRoutineCleanupQuery =
-    /\b(?:limpi(?:a|ar|ame)?|quit(?:a|ar|ame)?|corregi(?:r|me)?|elimin(?:a|ar)?|arregl(?:a|ar)?|borr(?:a|ar)?|nombre[s]?\s*(?:de\s*)?ejercicio|texto\s*extra|ruido|45\s*kg|120\s*kg|kilos?\s*(?:en|del|al)|rescat[oó]|adjunt[oó])\b/i.test(
+    /\b(?:limpi(?:a|ar|ame)\s+(?:los\s+)?(?:nombres?|ejercicios?|mi\s+rutina)|quit(?:a|ar|ame)\s+(?:el\s+)?(?:texto\s+extra|ruido)|arregl(?:a|ar|ame)\s+(?:los\s+)?nombres?|nombre[s]?\s*de\s*ejercicio[s]?\s*sucio[s]?|texto\s*extra\s*en\s*mi\s*rutina)\b/i.test(
       q
     );
 
@@ -858,9 +858,9 @@ export async function generateScientificAiResponse(
     };
   }
 
-  // 2. RESUMEN / AUDITORÍA DE LA RUTINA ACTUAL DEL USUARIO
+  // 2. RESUMEN / AUDITORÍA DE LA RUTINA ACTUAL O "¿QUÉ ME TOCA ENTRENAR HOY?"
   if (
-    /\b(?:mi rutina|analiza(?:r)? mi rutina|que tengo en mi rutina|revisa(?:r)? mi rutina|optimiza(?:r)? mi rutina)\b/i.test(
+    /\b(?:analiza(?:r)?\s+mi\s+rutina|que\s+tengo\s+en\s+mi\s+rutina|revisa(?:r)?\s+mi\s+rutina|optimiza(?:r)?\s+mi\s+rutina|cual\s+es\s+mi\s+rutina|muestrame\s+mi\s+rutina|que\s+(?:me\s+toca\s+)?entrena(?:r|mos)\s+hoy|que\s+hago\s+hoy|plan\s+de\s+hoy)\b/i.test(
       q
     ) &&
     context.routineDays &&
@@ -921,60 +921,157 @@ export async function generateScientificAiResponse(
     };
   }
 
-  // 3. PROTEÍNA Y NUTRICIÓN
+  // 3. TIEMPOS DE DESCANSO ENTRE SERIES (HIPERTROFIA VS FUERZA VS AISLAMIENTO)
   if (
-    /\b(?:proteina|cuanta proteina|macros|gramos de proteina|nutricion|dieta|calorias|superavit|deficit|creatina|agua)\b/i.test(
+    /\b(?:cuanto\s+(?:tiempo\s+)?(?:debo|deberia)?\s*descansar|tiempo\s+de\s+descanso|descansar\s+entre\s+series|descanso\s+en\s+este\s+ejercicio|descansos?\s+cortos?\s+o\s+largos?)\b/i.test(
       q
     )
   ) {
-    let content = `### Prescripción Nutricional Basada en Evidencia\n\n`;
+    const content =
+      `### Fisiología del Descanso entre Series (*Singer et al., 2024; Grgic et al., 2022*)\n\n` +
+      `El tiempo de descanso determina cuánta **fosfocreatina (PCr)** resintetizas y cuánta fatiga central disipas antes de la siguiente serie:\n\n` +
+      `1. **Fuerza Máxima (>82% 1RM · 1–5 reps):** **180 a 300 segundos (3–5 min)**. A los 90s solo has recuperado ~70% de tu fosfocreatina; a los 3–4 minutos superas el 95%.\n` +
+      `2. **Hipertrofia en Compuestos Pesados (Sentadilla Hack, Press de Banca Plano, Peso Muerto Rumano):** **120 a 180 segundos (2–3 min)**. Descansar menos de 90s reduce el volumen total y frena la hipertrofia.\n` +
+      `3. **Aislamiento y Poleas (Elevaciones Laterales en Polea, Curl Bayesiano, Extensiones):** **75 a 90 segundos**. Al involucrar menor masa muscular, la recuperación local y sistémica es más rápida.\n\n` +
+      `*Activa tu temporizador de descanso con 1 toque abajo:*`;
 
-    if (/\b(?:proteina|cuanta proteina|agua)\b/i.test(q)) {
+    return {
+      content,
+      suggestedActions: [
+        {
+          id: 'act_rest_90',
+          label: '⏱️ Iniciar descanso de 90s (Aislamiento)',
+          type: 'start_rest_timer',
+          payload: { restSeconds: 90 },
+        },
+        {
+          id: 'act_rest_120',
+          label: '⏱️ Iniciar descanso de 120s (Hipertrofia Base)',
+          type: 'start_rest_timer',
+          payload: { restSeconds: 120 },
+        },
+        {
+          id: 'act_rest_180',
+          label: '⏱️ Iniciar descanso de 180s (Compuestos / Fuerza)',
+          type: 'start_rest_timer',
+          payload: { restSeconds: 180 },
+        },
+      ],
+      confidence: 98,
+    };
+  }
+
+  // 4. SUSTITUTOS POR MÁQUINA OCUPADA O MOLESTIA / DOLOR ARTICULAR
+  if (
+    /\b(?:sustituto|alternativa|maquina\s+(?:que\s+necesito\s+)?(?:esta\s+)?ocupada|reemplazo|me\s+duele|dolor\s+de|molestia\s+en|lesion)\b/i.test(
+      q
+    )
+  ) {
+    let content = `### Matriz de Sustitución Biomecánica de Alto SFR (*Israetel & Beardsley*)\n\n`;
+    if (/\b(?:hombro|manguito|pecho|banca)\b/i.test(q)) {
       content +=
-        `Para maximizar la síntesis proteica muscular (MPS) y la hipertrofia según tu peso actual (**${weightKg} kg**), la evidencia científica (*Morton et al., 2018; ISSN Position Stand*) recomienda:\n\n` +
-        `- **Rango Óptimo:** **${proteinMin}g a ${proteinMax}g de proteína al día** (1.6 a 2.2 g por kg de peso corporal).\n` +
-        `- **Distribución:** Dividida en 3 a 5 tomas de entre **${Math.round(weightKg * 0.4)}g y ${Math.round(weightKg * 0.55)}g** cada 3–4 horas para saturar el umbral de leucina (~3g).\n` +
-        `- **Fuentes de Alto Valor Biológico (DIAAS):** Pollo, huevos enteros, pescado azul, carne magra, aislado de suero (whey), requesón o combinación de legumbres con cereales.\n\n` +
-        `**Hidratación celular:** Se recomienda un consumo base de **${waterLiters} litros de agua diarios** para mantener la volumización celular muscular.`;
-    } else if (/\b(?:creatina)\b/i.test(q)) {
+        `Para proteger la cápsula glenohumeral manteniendo el **100% de estímulo en pectoral y deltoides**:\n\n` +
+        `- **En lugar de Press de Banca con Barra:** Usa **Press Inclinado con Mancuernas** con agarre neutro/semiprono (30° de inclinación y plano escapular a 45°).\n` +
+        `- **En lugar de Press Militar tras nuca o barra recta:** Usa **Elevaciones Laterales en Polea** a la altura de la muñeca para máxima tensión en elongación sin pinzamiento subacromial.\n` +
+        `- **En lugar de Fondos profundos:** Usa **Cruces en Polea Alta** controlando 2 segundos la fase excéntrica.`;
+    } else if (/\b(?:rodilla|sentadilla|lumbar|espalda\s+baja)\b/i.test(q)) {
       content +=
-        `### Suplementación con Creatina Monohidrato (*Kreider et al., ISSN*)\n\n` +
-        `- **Dosis Diaria:** **${creatineGrams}g al día** (o 0.07g/kg), todos los días sin necesidad de descansos ni fases de carga.\n` +
-        `- **Mecanismo:** Incrementa los depósitos de fosfocreatina intramuscular en un 15–25%, mejorando la resíntesis de ATP en series de alta intensidad (RIR 0–2).\n` +
-        `- **Momento de ingesta:** Es de efecto acumulativo; consumirla post-entreno con carbohidratos o proteínas optimiza su captación muscular.`;
+        `Para reducir el cizallamiento patelofemoral y la compresión axial lumbar sin perder hipertrofia de pierna:\n\n` +
+        `- **En lugar de Sentadilla Libre con Barra:** Usa **Sentadilla Hack** o **Prensa de Piernas 45°** colocando los pies ligeramente más altos en la plataforma.\n` +
+        `- **En lugar de Peso Muerto Convencional:** Usa **Curl Femoral Sentado** (que genera ~40% más hipertrofia en isquiotibiales según *Maeo et al., 2023* con cero carga axial lumbar).\n` +
+        `- **En lugar de Remo con Barra Libre:** Usa **Remo en Polea Baja** o remo con soporte en pecho.`;
     } else {
       content +=
-        `Para optimizar tu composición corporal (*Helms et al., 2014*):\n\n` +
-        `- **Volumen / Superávit Limpio:** +250 a +350 kcal sobre tu mantenimiento (ganancia de 0.25–0.5% del peso corporal semanal) para minimizar adiposidad.\n` +
-        `- **Definición / Déficit:** -300 a -500 kcal (pérdida de 0.5–1% semanal), elevando la proteína a **${Math.round(weightKg * 2.2)}g/día** para preservar tejido magro.\n` +
-        `- **Grasas esenciales:** Mínimo 0.7–1.0 g/kg para mantener niveles óptimos de testosterona y salud hormonal.`;
+        `Si tu estación o máquina está ocupada, aplica estas **equivalencias biomecánicas directas** sin perder estímulo:\n\n` +
+        `- **Pectoral (Empuje):** **Press de Banca Plano** ⇄ **Press Inclinado con Mancuernas** ⇄ **Cruces en Polea Alta**.\n` +
+        `- **Espalda (Tracción):** **Jalón al Pecho Agarre Neutro** ⇄ **Dominadas** · **Remo en Polea Baja** ⇄ **Remo con Mancuerna a Una Mano**.\n` +
+        `- **Cuádriceps e Isquios:** **Sentadilla Hack** ⇄ **Prensa de Piernas 45°** · **Peso Muerto Rumano con Barra** ⇄ **Curl Femoral Sentado**.\n` +
+        `- **Hombros y Brazos:** **Elevaciones Laterales en Polea** ⇄ **Elevaciones Laterales con Mancuernas** · **Curl Bayesiano en Polea** ⇄ **Curl Inclinado con Mancuernas**.\n\n` +
+        `*Toca cualquiera de las alternativas abajo para añadirla inmediatamente a tu sesión:*`;
     }
 
     return {
       content,
       suggestedActions: extractActionSuggestionsFromText(content, query, context),
-      confidence: 96,
+      confidence: 97,
     };
   }
 
-  // 4. ARQUITECTURA DE RUTINA, VOLUMEN Y PERIODIZACIÓN
+  // 5. 1RM ESTIMADA (e1RM), FUERZA MÁXIMA Y SEMANA DE DESCARGA (DELOAD)
   if (
-    /\b(?:volumen semanal|orden de ejercicios|cuantas series|division|frecuencia|como armar|como organizar|como estructurar|split|torso\s*pierna|ppl)\b/i.test(
+    /\b(?:1rm|e1rm|descarga|deload|fatiga\s+acumulada|interpretar\s+mi\s+progresion|fuerza\s+maxima|powerlifting|velocidad\s+de\s+la\s+barra)\b/i.test(
       q
     )
   ) {
     const content =
-      `### Arquitectura de Rutina & Volumen Óptimo (*Schoenfeld, 2017; Israetel, 2021*)\n\n` +
-      `Para estructurar una rutina base de máxima eficiencia hipertrófica en **KAIROS**:\n\n` +
-      `1. **Volumen Semanal por Músculo (Series Efectivas a RIR 1–2):**\n` +
-      `   - **Mantenimiento (MV):** 6–8 series semanales.\n` +
-      `   - **Volumen Óptimo de Ganancias (MEV a MAV):** **10 a 20 series semanales** por grupo muscular, distribuidas en 2 sesiones semanales (Frecuencia 2).\n` +
-      `   - **Límite de Sesión:** No programes más de 8–10 series por músculo en un mismo día; a partir de ahí disminuye la síntesis proteica por serie.\n\n` +
-      `2. **Jerarquía del Orden de Ejercicios:**\n` +
-      `   - **Primero:** Ejercicios multiarticulares con alta demanda de estabilidad axial (ej. Press de Banca Plano, Sentadilla Hack, Peso Muerto Rumano con Barra).\n` +
-      `   - **Segundo:** Compuestos guiados en máquina o polea (ej. Jalón al Pecho Agarre Neutro, Remo en Polea Baja).\n` +
-      `   - **Final:** Aislamiento de alto SFR y bajo coste neural (ej. Elevaciones Laterales en Polea, Curl Bayesiano en Polea).\n\n` +
-      `3. **Edición Directa Conmigo:** Dime por ejemplo *"Agrega Elevaciones Laterales en Polea 3x15 al Día 1"* o *"Cárgame el Día 1 en mi entrenamiento de hoy"* y lo ejecutaré directamente por ti.`;
+      `### Gestión de 1RM Estimada (e1RM) y Protocolo de Descarga (*Nuckols, 2023; Pareja-Blanco, 2020*)\n\n` +
+      `1. **Cómo interpretar tu 1RM Estimada (Fórmula de Epley en KAIROS):**\n` +
+      `   - Tu **e1RM** ($\\text{Peso} \\times (1 + \\text{Reps}/30)$) mide tu fuerza máxima teórica sin el riesgo articular de probar 1 repetición al límite.\n` +
+      `   - Si tu e1RM sube un **1.5% a 3% mensual**, tu sobrecarga progresiva es óptima. En bloques de fuerza máxima, detén la serie cuando la velocidad de la barra caiga un **20%** (**RPE 7.5–8.5 / RIR 2–3**).\n\n` +
+      `2. **¿Cuándo programar una Semana de Descarga (Deload)?**\n` +
+      `   - Cada **4 a 6 semanas** de entrenamiento intenso, o si notas caída de rendimiento en 2 sesiones seguidas, pesadez articular y mal descanso.\n` +
+      `   - **Protocolo exacto de Deload:** Reduce el número de series un **40–50%** (ej. de 4 series baja a 2 series), mantén el peso al **80–85%** de tus cargas habituales y termina cada serie en **RIR 3–4** durante 7 días para disipar la fatiga del SNC sin perder adaptaciones neurales.`;
+
+    return {
+      content,
+      suggestedActions: extractActionSuggestionsFromText(content, query, context),
+      confidence: 97,
+    };
+  }
+
+  // 6. CARDIO, HIIT, QUEMA DE GRASA, ZONA 2, SALTO DE CUERDA Y HYROX
+  if (
+    /\b(?:hiit|(?:quemar|perder|eliminar|elimino|bajar)\s+grasa|definicion|cardio|zona\s*2|hyrox|roxzone|skierg|sled|cuerda|saltar\s+la\s+cuerda|running|correr|resistencia)\b/i.test(
+      q
+    )
+  ) {
+    let content = `### Fisiología del Acondicionamiento Híbrido, Cardio y Oxidación de Grasa\n\n`;
+    if (/\b(?:hyrox|roxzone|skierg|sled)\b/i.test(q)) {
+      content +=
+        `Basado en el análisis fisiológico de **Hyrox** (*Villaroel et al., 2025; Hunter McIntyre*):\n\n` +
+        `- **Pacing en Ergómetros (SkiErg y Rowing):** Mantente al **80–83% de tu FCmáx** (debajo de tu umbral de lactato LT2). Forzar 10s más rápido en el SkiErg dispara el lactato y te hace perder más de 90s en los tramos de carrera.\n` +
+        `- **Carrera Comprometida (8 × 1km):** Representa más del 50% del tiempo total. Entrénala realizando intervalos de 1000m inmediatamente después de **Sentadilla Hack** o zancadas.\n` +
+        `- **Eficiencia en Roxzone:** Hidrátate en movimiento y limita tu paso por la zona de transición a menos de 25 segundos.`;
+    } else {
+      content +=
+        `Para oxidar grasa preservando el **100% de tu masa muscular** (*Schumann et al., 2022; Seiler; San Millán*):\n\n` +
+        `1. **Regla de Oro de No-Interferencia:** Realiza siempre tu sesión de **Pesas / Fuerza PRIMERO**, y coloca el Cardio o HIIT al final de la sesión o separado por 6 horas.\n` +
+        `2. **Distribución Polarizada 80/20:**\n` +
+        `   - **80% en Zona 2 (60–70% FCmáx · RPE 3–4):** Trote conversacional o bici de 30–45 min. Estimula la biogénesis mitocondrial y la máxima oxidación de ácidos grasos.\n` +
+        `   - **20% en HIIT / Intervalos (Zona 4–5):** Ej. **Salto de Cuerda** (6 rondas de 90s trabajo / 30s descanso a 150 RPM) o Sprints (8 rondas de 20s a tope / 40s suaves).\n` +
+        `3. **Balance Energético:** Acompaña con un déficit moderado (-350 a -450 kcal) y **${Math.round(weightKg * 2.1)}g de proteína/día** para blindar tu musculatura.`;
+    }
+
+    return {
+      content,
+      suggestedActions: [
+        {
+          id: 'act_rest_hiit',
+          label: '⏱️ Iniciar Timer de Intervalos / Descanso (90s)',
+          type: 'start_rest_timer',
+          payload: { restSeconds: 90 },
+        },
+        ...extractActionSuggestionsFromText(content, query, context),
+      ],
+      confidence: 97,
+    };
+  }
+
+  // 7. SUEÑO, RECUPERACIÓN, AGUJETA (DOMS) Y HRV
+  if (
+    /\b(?:sueno|dormi(?:r)?\s+mal|insomnio|recuperacion|cansado|fatigado|agujetas|doms|hrv|rmssd|descanso\s+nocturno)\b/i.test(
+      q
+    )
+  ) {
+    const content =
+      `### Fisiología del Sueño, Recuperación y Autorregulación (*Walker, 2022; Altini, 2024; Craven et al.*)\n\n` +
+      `1. **Si dormiste menos de 6 horas hoy:**\n` +
+      `   - La restricción aguda de sueño eleva la percepción de esfuerzo (+1 punto de RPE) y reduce la potencia neural.\n` +
+      `   - **Ajuste inteligente hoy:** No intentes récords de 1RM. Reduce un **5% el peso en la barra**, guíate por **RIR 2** estricto y prioriza máquinas o poleas seguras.\n\n` +
+      `2. **Sueño Profundo (Fase NREM 3) y Agujetas (DOMS):**\n` +
+      `   - El **95% de la Hormona de Crecimiento (GH)** diaria se libera en las primeras 3–4 horas de sueño profundo.\n` +
+      `   - Las agujetas (DOMS) NO son indicador de mayor crecimiento muscular; si duran más de 72 horas, tu volumen en esa sesión superó tu Volumen Máximo Recuperable (MRV).\n\n` +
+      `3. **Telemetría HRV (RMSSD):** Si tu variabilidad cardíaca matutina cae por debajo de tu media de 7 días junto con pulsaciones en reposo altas, recorta 1 serie por ejercicio hoy.`;
 
     return {
       content,
@@ -983,29 +1080,196 @@ export async function generateScientificAiResponse(
     };
   }
 
-  // 5. SOBRECARGA PROGRESIVA Y RIR/RPE
+  // 8. RECOMENDACIÓN DE EJERCICIOS POR GRUPO MUSCULAR (PECHO, ESPALDA, PIERNA, HOMBRO, BRAZOS, GLÚTEO, CORE)
+  if (
+    /\b(?:ejercicios?\s+(?:para|de)|mejores\s+ejercicios|como\s+entrenar|rutina\s+de|crecer|desarrollar)\b/i.test(
+      q
+    ) &&
+    /\b(?:pecho|pectoral|espalda|dorsal|pierna|cuadriceps|femoral|isquio|gluteo|hombro|deltoides|biceps|triceps|brazo|abdomen|core|gemelo|pantorrilla)\b/i.test(
+      q
+    )
+  ) {
+    let muscleHeader = 'Selección Científica de Ejercicios de Alto SFR';
+    let explanation = '';
+
+    if (/\b(?:pecho|pectoral)\b/i.test(q)) {
+      muscleHeader = 'Pectoral Mayor (Clavicular y Esternocostal)';
+      explanation =
+        `Para hipertrofia máxima del pectoral enfatizando la tensión en máximo estiramiento (*Wolf et al., 2023*):\n\n` +
+        `1. **Press Inclinado con Mancuernas** — 3–4 series × 8–10 reps (RIR 1–2 · Descanso 150s). Maximiza el haz clavicular superior con rango profundo.\n` +
+        `2. **Press de Banca Plano** — 3 series × 6–8 reps (RIR 2 · Descanso 180s). Constructor base de tensión mecánica total.\n` +
+        `3. **Cruces en Polea Alta** — 3 series × 12–15 reps (RIR 0–1 · Descanso 90s). Tensión continua en aducción completa sin fatiga axial.`;
+    } else if (/\b(?:espalda|dorsal)\b/i.test(q)) {
+      muscleHeader = 'Espalda Completa (Dorsal Ancho y Espesor Escapular)';
+      explanation =
+        `Combina tracción vertical en plano frontal/sagital con tracción horizontal controlada:\n\n` +
+        `1. **Jalón al Pecho Agarre Neutro** — 3–4 series × 8–12 reps (RIR 1–2 · Descanso 120s). Alinea las fibras del dorsal ancho con excelente estabilidad.\n` +
+        `2. **Remo en Polea Baja** — 3–4 series × 10–12 reps (RIR 1–2 · Descanso 120s). Deja protraer las escápulas en la fase excéntrica para estirar trapecio y romboides.\n` +
+        `3. **Dominadas** — 3 series × 6–10 reps (RIR 1–2 · Descanso 150s). Tracción vertical de máxima activación neuromuscular.`;
+    } else if (/\b(?:pierna|cuadriceps|femoral|isquio|gluteo|gemelo|pantorrilla)\b/i.test(q)) {
+      muscleHeader = 'Tren Inferior (Cuádriceps, Isquiosurales y Glúteos)';
+      explanation =
+        `La evidencia (*Maeo et al., 2023; Kassiano et al., 2023*) demuestra la superioridad del estiramiento bajo carga en cadera y rodilla:\n\n` +
+        `1. **Sentadilla Hack** — 3–4 series × 8–10 reps (RIR 1–2 · Descanso 180s). SFR 9.5/10 para cuádriceps con espalda protegida.\n` +
+        `2. **Peso Muerto Rumano con Barra** — 3 series × 8–10 reps (RIR 2 · Descanso 150s). Tensión mecánica masiva en isquios y glúteo mayor.\n` +
+        `3. **Curl Femoral Sentado** — 3 series × 10–15 reps (RIR 0–1 · Descanso 90s). Estira el isquiotibial desde la cadera produciendo ~40% más crecimiento que tumbado.`;
+    } else if (/\b(?:hombro|deltoides)\b/i.test(q)) {
+      muscleHeader = 'Deltoides (Lateral, Anterior y Posterior)';
+      explanation =
+        `Para construir amplitud en V ("V-Taper") priorizando la cabeza lateral con tensión en elongación:\n\n` +
+        `1. **Elevaciones Laterales en Polea** — 4 series × 12–15 reps (RIR 0–1 · Descanso 75s). Coloca la polea a la altura de la muñeca para máxima tensión desde el inicio.\n` +
+        `2. **Press Militar con Mancuernas** — 3 series × 8–10 reps (RIR 1–2 · Descanso 120s). Fuerza e hipertrofia del deltoides anterior.\n` +
+        `3. **Pájaros en Máquina Peck Deck (Deltoides Posterior)** — 3 series × 12–15 reps (RIR 0–1 · Descanso 75s).`;
+    } else {
+      muscleHeader = 'Brazos y Core (Bíceps, Tríceps y Abdomen)';
+      explanation =
+        `El secreto en brazos es entrenar la cabeza larga en máxima elongación de hombro (*Maeo et al., 2023*):\n\n` +
+        `1. **Curl Bayesiano en Polea** — 3–4 series × 10–14 reps (RIR 0–1 · Descanso 75s). Estira el bíceps con el hombro en hiperextensión.\n` +
+        `2. **Extensión de Tríceps Tras Nuca en Polea** — 3–4 series × 10–14 reps (RIR 0–1 · Descanso 75s). Produce ~40% más hipertrofia en la cabeza larga que las extensiones con codos pegados.`;
+    }
+
+    const content =
+      `### ❖ Top Ejercicios Basados en Evidencia: **${muscleHeader}**\n\n` +
+      `${explanation}\n\n` +
+      `*Toca los botones interactivos de abajo para añadir cualquiera de estos ejercicios a tu entrenamiento de hoy o a tu rutina base:*`;
+
+    return {
+      content,
+      suggestedActions: extractActionSuggestionsFromText(content, query, context),
+      confidence: 98,
+    };
+  }
+
+  // 9. PROTEÍNA, NUTRICIÓN Y SUPLEMENTACIÓN
+  if (
+    /\b(?:proteina|cuanta proteina|macros|gramos de proteina|nutricion|dieta|calorias|superavit|deficit|creatina|agua|cafeina|pre\s*entreno|suplemento|whey|electrolitos|sodio)\b/i.test(
+      q
+    )
+  ) {
+    let content = `### Prescripción Nutricional Basada en Evidencia\n\n`;
+
+    if (/\b(?:proteina|cuanta proteina|agua|whey)\b/i.test(q)) {
+      content +=
+        `Para maximizar la síntesis proteica muscular (MPS) y la hipertrofia según tu peso actual (**${weightKg} kg**), la evidencia científica (*Morton et al., 2018; ISSN Position Stand*) recomienda:\n\n` +
+        `- **Rango Óptimo:** **${proteinMin}g a ${proteinMax}g de proteína al día** (1.6 a 2.2 g por kg de peso corporal).\n` +
+        `- **Distribución y Umbral de Leucina:** Dividida en 3 a 4 tomas de entre **${Math.round(weightKg * 0.4)}g y ${Math.round(weightKg * 0.55)}g** cada 3–4 horas para superar los ~3g de leucina que activan mTORC1.\n` +
+        `- **Fuentes de Alto Valor Biológico (DIAAS):** Pollo, huevos enteros, pescado, carne magra, aislado de suero (whey) o yogur griego.\n\n` +
+        `**Hidratación celular:** Consume **${waterLiters} litros de agua diarios**, añadiendo 500–800mg de sodio por litro en entrenamientos intensos de más de 60 min (*Dr. Andy Galpin*).`;
+    } else if (/\b(?:creatina|cafeina|pre\s*entreno|suplemento)\b/i.test(q)) {
+      content +=
+        `### Suplementación Ergogénica con Grado de Evidencia A (*ISSN*)\n\n` +
+        `- **Creatina Monohidrato:** **${creatineGrams}g al día** todos los días sin fase de carga. Satura un 20% más los depósitos de fosfocreatina para sostener más repeticiones a RIR 1–2.\n` +
+        `- **Cafeína Anhidra (Pre-entreno):** **${Math.round(weightKg * 3)}mg a ${Math.round(weightKg * 5)}mg** (3–5 mg/kg) 45 min antes de sesiones pesadas. Reduce el esfuerzo percibido y eleva la velocidad de barra (evítala 8h antes de dormir).\n` +
+        `- **Electrolitos (Sodio/Potasio):** 500–800mg de sodio intra-entreno para mantener el volumen plasmático y prevenir la deriva cardíaca.`;
+    } else {
+      content +=
+        `Para optimizar tu composición corporal según tus **${weightKg} kg** (*Helms et al., 2014*):\n\n` +
+        `- **Volumen / Superávit Limpio:** +250 a +350 kcal sobre mantenimiento (ganancia de 0.25–0.5% de peso semanal) para construir músculo minimizando grasa.\n` +
+        `- **Definición / Déficit:** -350 a -500 kcal (pérdida de 0.5–1% semanal), elevando la proteína a **${Math.round(weightKg * 2.2)}g/día** para blindar tu masa muscular.\n` +
+        `- **Grasas esenciales:** Mínimo **${Math.round(weightKg * 0.8)}g/día** (0.8 g/kg) para sostener el entorno hormonal.`;
+    }
+
+    return {
+      content,
+      suggestedActions: extractActionSuggestionsFromText(content, query, context),
+      confidence: 97,
+    };
+  }
+
+  // 10. ARQUITECTURA DE RUTINA, VOLUMEN Y PERIODIZACIÓN
+  if (
+    /\b(?:volumen semanal|orden de ejercicios|cuantas series|division|frecuencia|como armar|como organizar|como estructurar|split|torso\s*pierna|ppl|calentamiento|aproximacion)\b/i.test(
+      q
+    )
+  ) {
+    const content =
+      `### Arquitectura de Rutina & Volumen Óptimo (*Schoenfeld; Israetel; Pelland et al., 2024*)\n\n` +
+      `Para estructurar una rutina de máxima eficiencia en **KAIROS**:\n\n` +
+      `1. **Volumen Semanal por Músculo (Series Efectivas a RIR 1–2):**\n` +
+      `   - **Mantenimiento (MV):** 4–6 series semanales.\n` +
+      `   - **Volumen Óptimo de Ganancias (MAV):** **10 a 20 series semanales** por grupo muscular, repartidas en Frecuencia 2 (nunca más de 8–10 series de un mismo músculo en un solo día).\n\n` +
+      `2. **Protocolo de Calentamiento (Series de Aproximación):**\n` +
+      `   - En el primer ejercicio compuesto del día realiza 3 series progresivas lejos del fallo: **50% × 8 reps** ➔ **70% × 4 reps** ➔ **85% × 1–2 reps**; descansa 2 min y entra a tu primera serie efectiva con el sistema nervioso potenciado.\n\n` +
+      `3. **Edición Directa Conmigo:** Dime *"Agrega Elevaciones Laterales en Polea 3x15 al Día 1"* o *"Cárgame el Día 1 en mi entrenamiento de hoy"* y lo aplicaré al instante.`;
+
+    return {
+      content,
+      suggestedActions: extractActionSuggestionsFromText(content, query, context),
+      confidence: 96,
+    };
+  }
+
+  // 11. SOBRECARGA PROGRESIVA Y RIR/RPE
   if (
     /\b(?:sobrecarga progresiva|rir|rpe|al fallo|fallo muscular|progresar|estancado|estancamiento)\b/i.test(
       q
     )
   ) {
     const content =
-      `### Principio de Sobrecarga Progresiva & Proximidad al Fallo (*Beardsley, 2020; Robinson et al., 2024*)\n\n` +
-      `Para generar tensión mecánica máxima (el motor primario del crecimiento muscular), debes aplicar estas reglas en **KAIROS**:\n\n` +
-      `1. **Proximidad al Fallo (RIR 1–2):** Las repeticiones verdaderamente estimulantes son las últimas 4–5 previas al fallo concéntrico (cuando la velocidad de ejecución disminuye involuntariamente a pesar del máximo esfuerzo).\n` +
-      `2. **Doble Progresión:** Define una ventana de repeticiones (ej. 8–12 reps). Mantén el peso constante hasta lograr el tope del rango en todas las series efectivas con técnica estricta; solo entonces incrementa la carga un 2.5–5%.\n` +
-      `3. **Estandarización del Tempo:** Controla la fase excéntrica de 2 a 3 segundos con pausa de 1s en máxima elongación.`;
+      `### Principio de Sobrecarga Progresiva & Proximidad al Fallo (*Beardsley; Robinson et al., 2024*)\n\n` +
+      `Para generar tensión mecánica máxima (el motor primario del crecimiento muscular), aplica estas reglas en **KAIROS**:\n\n` +
+      `1. **Proximidad al Fallo (RIR 1–2):** Terminar tus series guardando 1 a 2 repeticiones en reserva produce el mismo crecimiento muscular que llegar al fallo total (RIR 0), pero reduce a la mitad la fatiga neuromuscular.\n` +
+      `2. **Doble Progresión:** En un rango de 8–12 reps, mantén el peso fijo hasta lograr 12 reps en todas las series con técnica impecable; en la siguiente sesión sube 1.25–2.5 kg y vuelve a 8 reps.\n` +
+      `3. **Tempo Estirado:** Controla la bajada 2 segundos y haz una micropausa en el punto de máximo estiramiento.`;
 
     return {
       content,
       suggestedActions: extractActionSuggestionsFromText(content, query, context),
-      confidence: 95,
+      confidence: 96,
     };
   }
 
-  // 6. CONSULTA ESPECÍFICA DE EJERCICIOS Y BIOMECÁNICA PROFUNDA
+  // 12. CALISTENIA / ISOMÉTRICOS DE PALANCA
+  if (
+    /\b(?:calistenia|isometrico|front lever|planche|handstand|pino|muscle up|dominadas|fondos|l-sit|palanca)\b/i.test(
+      q
+    )
+  ) {
+    const content =
+      `### Biomecánica de Calistenia y Palancas Gimnásticas (*Steven Low; Lum & Barbosa, 2022*)\n\n` +
+      `- **Regla del 70–80% en Isométricos:** En **Planche** o **Front Lever**, si tu aguante máximo es de 12s, entrena **4 a 5 series de 8–9 segundos** impecables (acumulando 35–45s de tiempo bajo tensión total) sin perder bloqueo de codos.\n` +
+      `- **Posición Escapular:** En Planche aplica **protracción y depresión máxima** (serrato anterior); en Front Lever aplica **retracción activa y depresión**.\n` +
+      `- **Remodelación Tendinosa:** Los tendones tardan de **6 a 12 semanas** en adaptar su colágeno a brazos rectos. No avances de progresión (Tuck ➔ Adv. Tuck ➔ Straddle ➔ Full) hasta dominar 5×12s sin molestia articular.\n` +
+      `- **Descanso Neural:** Descansa **150 a 180 segundos** entre intentos isométricos.`;
+
+    return {
+      content,
+      suggestedActions: [
+        {
+          id: 'act_rest_cali',
+          label: '⏱️ Iniciar descanso neural de 150 segundos',
+          type: 'start_rest_timer',
+          payload: { restSeconds: 150 },
+        },
+        ...extractActionSuggestionsFromText(content, query, context),
+      ],
+      confidence: 96,
+    };
+  }
+
+  // 13. GUARDRAIL FUERA DE CONTEXTO (OFF-TOPIC REDIRECT)
+  if (
+    /\b(?:politica|pelicula|pizza|pastel|futbol|presidente|clima|chiste|horoscopo|programar|python|historia|bitcoin|cripto|videojuego)\b/i.test(
+      q
+    )
+  ) {
+    return {
+      content:
+        `### ❖ Enfoque Exclusivo en Alto Rendimiento — KAIROS\n\n` +
+        `Mi arquitectura está dedicada exclusivamente a **ciencias del deporte, biomecánica, hipertrofia, fuerza, acondicionamiento híbrido (Hyrox/Cardio), nutrición deportiva y gestión inteligente de tu entrenamiento en KAIROS**.\n\n` +
+        `¿En qué área de tu preparación física deseas que trabajemos hoy? Puedo analizar tu rutina, recomendarte ejercicios de alto SFR, calcular tus macros para tus **${weightKg} kg** o cargar tu sesión del día.`,
+      suggestedActions: [],
+      confidence: 99,
+    };
+  }
+
+  // 14. CONSULTA ESPECÍFICA DE EJERCICIOS Y BIOMECÁNICA PROFUNDA
+  // Only match when query isn't a long unrelated question
   const candidateResolved = resolveExerciseIntelligently(query);
-  if (candidateResolved.isCanonicalMatch || candidateResolved.confidence >= 65) {
+  if (
+    (candidateResolved.isCanonicalMatch || candidateResolved.confidence >= 72) &&
+    q.split(/\s+/).length <= 10
+  ) {
     const exName = candidateResolved.canonicalName;
     const dp = candidateResolved.deepProfile;
     const rest = candidateResolved.defaultRestSeconds;
@@ -1036,36 +1300,39 @@ export async function generateScientificAiResponse(
     };
   }
 
-  // 7. CALISTENIA / ISOMÉTRICOS
-  if (
-    /\b(?:calistenia|isometrico|front lever|planche|handstand|dominadas|fondos|l-sit)\b/i.test(q)
-  ) {
-    const content =
-      `### Ciencia de la Calistenia e Isométricos de Palanca (*Suchomel et al., 2018*)\n\n` +
-      `- **Tensión Isométrica Superada:** Los isométricos en posiciones de elongación aumentan la rigidez tendinosa y la fuerza específica del ángulo articular.\n` +
-      `- **Tiempo Bajo Tensión (TUT):** Para ganar fuerza máxima de palanca (Front Lever, Planche), los bloques de sostén óptimos son de **6 a 12 segundos** por serie al 85–95% de esfuerzo.\n` +
-      `- **Descanso Neural:** Al involucrar alta demanda del SNC y core, descansa de **120 a 180 segundos** entre series.`;
+  // 15. RESPUESTA CIENTÍFICA CONTEXTUALIZADA Y ACCIONES DIRECTAS
+  const activeDayHint =
+    context.routineDays?.find((d) => !d.isRestDay && d.exercises.length > 0) ?? null;
 
-    return {
-      content,
-      suggestedActions: extractActionSuggestionsFromText(content, query, context),
-      confidence: 92,
-    };
+  const defaultActions: AiActionSuggestion[] = [];
+  if (activeDayHint) {
+    defaultActions.push({
+      id: `act_quick_load_${activeDayHint.id}`,
+      label: `▶️ Cargar ${activeDayHint.label} (${activeDayHint.focusTitle}) para entrenar hoy`,
+      type: 'load_routine_day_to_workout',
+      payload: {
+        targetDayId: activeDayHint.id,
+        targetDayLabel: `${activeDayHint.label} · ${activeDayHint.focusTitle}`,
+      },
+    });
   }
 
-  // 8. RESPUESTA CIENTÍFICA GENERAL + COMANDOS AGÉNTICOS DISPONIBLES
   const content =
-    `### Dictamen KAIROS · Inteligencia Biomecánica & Control Agéntico\n\n` +
-    `Como tu **KAIROS AI Coach**, no solo respondo consultas científicas de biomecánica, hipertrofia y nutrición (**${proteinMin}–${proteinMax}g de proteína/día** para tus ${weightKg}kg), sino que también **puedo interactuar directamente con tu cuenta y editar tus datos**.\n\n` +
-    `**Comandos directos que puedes pedirme en cualquier momento:**\n` +
-    `- **Cargar entrenamientos:** *"Cárgame el Día 1 de Torso para entrenar hoy"* o *"Carga el día de Pierna completo"*\n` +
-    `- **Editar tu rutina:** *"Agrega Elevaciones Laterales en Polea 3x15 al Día 1"*, *"Cambia Press de Banca por Press Inclinado con Mancuernas"* o *"Elimina Fondos de mi rutina"*\n` +
-    `- **Modificar series y cargas:** *"Cambia Remo en Polea Baja a 3 series de 10 reps con 45kg"*\n` +
-    `- **Actualizar tu perfil:** *"Actualiza mi peso a 78 kg"* o *"Pon mi descanso por defecto en 120 segundos"*`;
+    `### ❖ KAIROS AI Coach · Asesoría Científica & Control en Vivo\n\n` +
+    `Estoy sincronizado con tu perfil (**${weightKg} kg** · meta de **${proteinMin}–${proteinMax}g de proteína/día**)${
+      context.routineName ? ` y tu rutina **${context.routineName}**` : ''
+    }.\n\n` +
+    `**Puedes preguntarme o pedirme directamente:**\n` +
+    `- **Consultas científicas específicas:** *"¿Qué ejercicios me recomiendas para pecho o espalda?"*, *"¿Cuánto descansar entre series?"*, *"Sustituto si la máquina está ocupada"*, *"¿Cuándo hacer descarga (deload)?"* o *"¿Cómo entrenar para Hyrox / Zona 2?"*\n` +
+    `- **Biomecánica de cualquier ejercicio:** Escribe el nombre de un ejercicio (ej. *"Sentadilla Hack"*, *"Press Inclinado"*, *"Curl Bayesiano"*) para ver sus músculos agonistas, SFR y fatiga neural.\n` +
+    `- **Edición en vivo de tu rutina:** *"Agrega Elevaciones Laterales en Polea 3x15 al Día 1"*, *"Cambia Press de Banca por Press Inclinado con Mancuernas"* o *"Cárgame el Día 1 para entrenar hoy"*.`;
 
   return {
     content,
-    suggestedActions: extractActionSuggestionsFromText(content, query, context),
-    confidence: 90,
+    suggestedActions: [
+      ...defaultActions,
+      ...extractActionSuggestionsFromText(content, query, context),
+    ],
+    confidence: 92,
   };
 }

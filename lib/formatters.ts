@@ -12,6 +12,7 @@ export const MODE_META: Record<
     label: string;
     shortLabel: string;
     colorHex: string;
+    accentHex: string;
     badgeClass: string;
     borderClass: string;
     accentBarClass: string;
@@ -24,7 +25,8 @@ export const MODE_META: Record<
   hypertrophy: {
     label: 'Hipertrofia',
     shortLabel: 'Hipertrofia',
-    colorHex: '#959FA8',
+    colorHex: '#60A5FA',
+    accentHex: '#60A5FA',
     badgeClass: 'bg-elevated text-brand border-stoneborder',
     borderClass: 'border-stoneborder',
     accentBarClass: 'bg-mode-hypertrophy',
@@ -36,7 +38,8 @@ export const MODE_META: Record<
   strength: {
     label: 'Fuerza',
     shortLabel: 'Fuerza',
-    colorHex: '#B5A082',
+    colorHex: '#F59E0B',
+    accentHex: '#F59E0B',
     badgeClass: 'bg-elevated text-mode-strength border-stoneborder',
     borderClass: 'border-stoneborder',
     accentBarClass: 'bg-mode-strength',
@@ -48,7 +51,8 @@ export const MODE_META: Record<
   calisthenics: {
     label: 'Calistenia',
     shortLabel: 'Calistenia',
-    colorHex: '#789483',
+    colorHex: '#10B981',
+    accentHex: '#10B981',
     badgeClass: 'bg-elevated text-mode-calisthenics border-stoneborder',
     borderClass: 'border-stoneborder',
     accentBarClass: 'bg-mode-calisthenics',
@@ -60,7 +64,8 @@ export const MODE_META: Record<
   hyrox: {
     label: 'Hyrox',
     shortLabel: 'Hyrox',
-    colorHex: '#A67B60',
+    colorHex: '#F97316',
+    accentHex: '#F97316',
     badgeClass: 'bg-elevated text-mode-hyrox border-stoneborder',
     borderClass: 'border-stoneborder',
     accentBarClass: 'bg-mode-hyrox',
@@ -72,7 +77,8 @@ export const MODE_META: Record<
   cardio: {
     label: 'Cardio',
     shortLabel: 'Cardio',
-    colorHex: '#7B93A1',
+    colorHex: '#38BDF8',
+    accentHex: '#38BDF8',
     badgeClass: 'bg-elevated text-mode-cardio border-stoneborder',
     borderClass: 'border-stoneborder',
     accentBarClass: 'bg-mode-cardio',

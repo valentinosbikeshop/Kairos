@@ -412,13 +412,28 @@ export function TimerEngineProvider({ children }: { children: React.ReactNode })
       }
     }
 
-    if (isRunningRef.current && phaseRemainingMs <= 3050 && phaseRemainingMs > 80) {
+    if (isRunningRef.current && phaseRemainingMs <= 5050 && phaseRemainingMs > 80) {
       const ceilSec = Math.ceil(phaseRemainingMs / 1000);
-      if (ceilSec === 3 || ceilSec === 2 || ceilSec === 1) {
+      if (ceilSec === 5 || ceilSec === 4 || ceilSec === 3 || ceilSec === 2 || ceilSec === 1) {
         const pipKey = `${foundIdx}_${ceilSec}`;
         if (!firedPipsRef.current.has(pipKey)) {
           firedPipsRef.current.add(pipKey);
           kairosAudio.playCountdownPip(ceilSec);
+        }
+      }
+    } else if (
+      isRunningRef.current &&
+      cfg.kind === 'isometric' &&
+      activeSeg.phase === 'work' &&
+      phaseRemainingMs > 5050
+    ) {
+      const ceilSec = Math.ceil(phaseRemainingMs / 1000);
+      const totalSec = Math.round(activeSeg.durationMs / 1000);
+      if (ceilSec > 5 && ceilSec < totalSec) {
+        const isoKey = `iso_${foundIdx}_${ceilSec}`;
+        if (!firedPipsRef.current.has(isoKey)) {
+          firedPipsRef.current.add(isoKey);
+          kairosAudio.playIsometricSecondPulse();
         }
       }
     }

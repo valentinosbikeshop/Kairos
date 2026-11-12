@@ -10,32 +10,32 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Soft Gothic Obsidian & Cathedral Slate (low eye-strain, zero harsh pitch-black/white glare)
-        background: '#0E0D10',
-        surface: '#16151A',
-        elevated: '#1E1C23',
-        stoneborder: '#27242E',
+        // Luminous Obsidian & Imperial Gold (vibrant depth, high contrast, zero flatness)
+        background: '#0B0A0E',
+        surface: '#14131A',
+        elevated: '#1D1B26',
+        stoneborder: '#2A2736',
         brand: {
-          DEFAULT: '#DDD7CC', // Warm Parchment / Bone Ivory
-          muted: '#8E877D',   // Soft Ash
-          subtle: '#5E5952',  // Weathered Stone
+          DEFAULT: '#F4F0E8', // Crisp Warm Alabaster
+          muted: '#A39E93',   // Clear Secondary Slate-Ivory
+          subtle: '#6E6A63',  // Balanced Muted Stone
         },
         gothic: {
-          DEFAULT: '#B5A082', // Aged Bronze / Antique Pale Gold
-          muted: '#8A7960',
-          crimson: '#8F5154', // Dried Wine / Muted Gothic Crimson
+          DEFAULT: '#DEB868', // Radiant Imperial Gold
+          muted: '#A88948',
+          crimson: '#E11D48', // Vivid Crimson
         },
-        // Desaturated, calm semantic accents
+        // Vibrant, unmistakable discipline accents
         mode: {
-          hypertrophy: '#959FA8', // Slate Iron
-          strength: '#B5A082',    // Antique Bronze
-          calisthenics: '#789483', // Weathered Moss
-          hyrox: '#A67B60',       // Forged Terracotta
-          cardio: '#7B93A1',      // Mist Steel
+          hypertrophy: '#60A5FA', // Electric Sapphire
+          strength: '#F59E0B',    // Molten Amber Gold
+          calisthenics: '#10B981', // Kinetic Emerald
+          hyrox: '#F97316',       // Competition Flame
+          cardio: '#38BDF8',      // Aero Cyan
         },
         status: {
-          advance: '#6F917C',     // Calm Sage
-          regress: '#9C5B5E',     // Muted Wine
+          advance: '#10B981',     // Vibrant Emerald
+          regress: '#F43F5E',     // Vivid Ruby
         },
       },
       fontFamily: {

@@ -305,6 +305,19 @@ export function extractPublicSnapshot(record: StoredAccountRecord) {
   };
 }
 
+const authAttemptsMap = new Map<string, { count: number; windowStart: number }>();
+
+function checkAuthRateLimit(key: string, maxPerMinute = 18): boolean {
+  const now = Date.now();
+  const entry = authAttemptsMap.get(key);
+  if (!entry || now - entry.windowStart > 60_000) {
+    authAttemptsMap.set(key, { count: 1, windowStart: now });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= maxPerMinute;
+}
+
 export async function createSignedToken(userId: string): Promise<string> {
   const secret = getMasterSecret();
   const issuedAt = Date.now().toString(36);
@@ -314,10 +327,14 @@ export async function createSignedToken(userId: string): Promise<string> {
 }
 
 export async function verifySignedToken(token: string | null | undefined): Promise<string | null> {
-  if (!token || typeof token !== 'string') return null;
+  if (!token || typeof token !== 'string' || token.length > 256) return null;
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [userId, issuedAt, providedSig] = parts;
+  const issuedMs = parseInt(issuedAt, 36);
+  if (!Number.isFinite(issuedMs) || Date.now() - issuedMs > 366 * 24 * 60 * 60 * 1000) {
+    return null;
+  }
   const secret = getMasterSecret();
   const payload = `${userId}.${issuedAt}`;
   const expectedSig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
@@ -339,9 +356,13 @@ export async function registerAccount(input: {
   displayName: string;
   password: string;
 }): Promise<{ ok: true; record: StoredAccountRecord } | { ok: false; error: string }> {
-  const cleanUsername = input.username.trim().toLowerCase();
-  const cleanName = input.displayName.trim() || input.username.trim();
+  const cleanUsername = input.username.trim().toLowerCase().slice(0, 80);
+  const cleanName = (input.displayName.trim() || input.username.trim()).slice(0, 80);
   const password = input.password;
+
+  if (!checkAuthRateLimit(`reg_${cleanUsername}`, 15)) {
+    return { ok: false, error: 'Demasiados intentos. Espera un minuto e intenta de nuevo.' };
+  }
 
   if (cleanUsername.length < 3) {
     return { ok: false, error: 'El usuario o correo debe tener al menos 3 caracteres.' };
@@ -428,6 +449,9 @@ export async function authenticateAccount(input: {
   password: string;
 }): Promise<{ ok: true; record: StoredAccountRecord } | { ok: false; error: string }> {
   const cleanUsername = input.username.trim().toLowerCase();
+  if (!checkAuthRateLimit(`login:${cleanUsername}`)) {
+    return { ok: false, error: 'Demasiados intentos de acceso. Espera 1 minuto.' };
+  }
 
   const supabase = getSupabaseClient();
   if (supabase) {
@@ -479,6 +503,9 @@ export async function resetAccountPassword(input: {
   newPassword: string;
 }): Promise<{ ok: true; record: StoredAccountRecord } | { ok: false; error: string }> {
   const cleanUsername = input.username.trim().toLowerCase();
+  if (!checkAuthRateLimit(`reset:${cleanUsername}`)) {
+    return { ok: false, error: 'Demasiados intentos. Espera 1 minuto antes de reintentar.' };
+  }
   const newPassword = input.newPassword;
 
   if (cleanUsername.length < 3) {

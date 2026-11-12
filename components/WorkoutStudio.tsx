@@ -191,6 +191,94 @@ export function WorkoutStudio() {
     [activeWorkout.blocks]
   );
 
+  // Weekly consistency strip (L M X J V S D) & live session progress
+  const weeklyActivity = useMemo(() => {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon...
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+
+    const trainedDaysSet = new Set<string>();
+    for (const s of sessions) {
+      if (s.dateIso) {
+        trainedDaysSet.add(s.dateIso.slice(0, 10));
+      }
+    }
+
+    const labels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    const days = labels.map((lbl, idx) => {
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + idx);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate()
+      ).padStart(2, '0')}`;
+      const isToday = d.toDateString() === now.toDateString();
+      const trained = trainedDaysSet.has(iso);
+      return { lbl, iso, isToday, trained };
+    });
+
+    const weekCount = days.filter((d) => d.trained).length;
+    return { days, weekCount };
+  }, [sessions]);
+
+  const liveWorkoutStats = useMemo(() => {
+    let totalSets = 0;
+    let completedSets = 0;
+    let tonnageKg = 0;
+
+    for (const b of activeWorkout.blocks) {
+      for (const ex of b.exercises) {
+        for (const s of ex.hypertrophySets ?? []) {
+          totalSets++;
+          if (s.completed) {
+            completedSets++;
+            tonnageKg += (s.weightKg || 0) * (s.reps || 0);
+          }
+        }
+        for (const s of ex.strengthSets ?? []) {
+          totalSets++;
+          if (s.completed) {
+            completedSets++;
+            tonnageKg += (s.weightKg || 0) * (s.reps || 0);
+          }
+        }
+        for (const s of ex.calisthenicsDynamicSets ?? []) {
+          totalSets++;
+          if (s.completed) {
+            completedSets++;
+            tonnageKg += Math.max(0, s.addedWeightKg || 0) * (s.reps || 0);
+          }
+        }
+        for (const s of ex.calisthenicsIsometricSets ?? []) {
+          totalSets++;
+          if (s.completed) completedSets++;
+        }
+        for (const s of ex.hyroxSets ?? []) {
+          totalSets++;
+          if (s.completed) completedSets++;
+        }
+        for (const s of ex.jumpRopeSets ?? []) {
+          totalSets++;
+          if (s.completed) completedSets++;
+        }
+        for (const s of ex.runningSets ?? []) {
+          totalSets++;
+          if (s.completed) completedSets++;
+        }
+        for (const s of ex.swimmingSets ?? []) {
+          totalSets++;
+          if (s.completed) completedSets++;
+        }
+        for (const s of ex.cyclingSets ?? []) {
+          totalSets++;
+          if (s.completed) completedSets++;
+        }
+      }
+    }
+
+    const pct = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
+    return { totalSets, completedSets, pct, tonnageKg: Math.round(tonnageKg) };
+  }, [activeWorkout.blocks]);
+
   const dynamicExamplePlaceholder = useMemo(() => {
     if (activeWorkout.titlePlaceholder) return activeWorkout.titlePlaceholder;
     if (activeModes.length > 0) {
@@ -284,12 +372,39 @@ export function WorkoutStudio() {
       {/* ================= MAIN WORKSPACE ================= */}
       <div className="px-5 pt-4 space-y-5">
         {/* ================= DAILY QUOTE & TODAY'S ROUTINE + ORDERED EXERCISE SUGGESTIONS ================= */}
-        <section className="rounded-2xl border border-stoneborder bg-surface p-4 space-y-3.5">
-          {/* Motivational Quote (No principle word like "Firmeza", no quotation marks) */}
-          <div className="space-y-1">
-            {user?.displayName && (
-              <span className="text-[11px] text-gothic">❖ {user.displayName}</span>
-            )}
+        <section className="rounded-2xl border border-stoneborder bg-surface p-4 space-y-3.5 kairos-card-alive">
+          {/* Motivational Quote + Weekly Consistency Strip */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              {user?.displayName ? (
+                <span className="text-[11px] font-semibold tracking-wide text-gothic">
+                  ❖ {user.displayName}
+                </span>
+              ) : (
+                <span className="text-[11px] font-semibold tracking-wide text-gothic">
+                  ❖ Atleta KAIROS
+                </span>
+              )}
+
+              {/* Weekly Consistency Dots (L M X J V S D) */}
+              <div className="flex items-center gap-1" title="Constancia semanal (Lunes a Domingo)">
+                {weeklyActivity.days.map((d) => (
+                  <div
+                    key={d.iso}
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-mono font-bold transition-all ${
+                      d.trained
+                        ? 'bg-emerald-500/25 border border-emerald-400/70 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                        : d.isToday
+                          ? 'border border-gothic/80 bg-gothic/15 text-gothic'
+                          : 'border border-stoneborder bg-background/60 text-brand-subtle'
+                    }`}
+                  >
+                    {d.trained ? '✓' : d.lbl}
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <p className="font-gothic text-xs text-brand leading-relaxed">
               {dailyQuote.text}
             </p>
@@ -529,7 +644,7 @@ export function WorkoutStudio() {
                   <button
                     type="button"
                     onClick={() => handleLoadFullRoutineDay(activeSuggestionDay)}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-elevated border border-gothic/40 py-2.5 px-3 text-xs font-semibold text-brand hover:border-gothic active:scale-[0.99]"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#DEB868]/25 via-[#DEB868]/15 to-[#DEB868]/25 border border-gothic/60 py-2.5 px-3 text-xs font-semibold text-brand shadow-[0_0_20px_rgba(222,184,104,0.12)] hover:border-gothic hover:bg-gothic/25 active:scale-[0.99] transition-all"
                   >
                     <Play className="h-3.5 w-3.5 fill-current text-gothic" />
                     <span>
@@ -653,6 +768,53 @@ export function WorkoutStudio() {
           </div>
         )}
 
+        {/* ================= LIVE SESSION PROGRESS BAR & TONNAGE HUD ================= */}
+        {liveWorkoutStats.totalSets > 0 && (
+          <div className="rounded-2xl border border-stoneborder bg-surface p-3.5 space-y-2 kairos-card-alive">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex h-2 w-2 rounded-full ${
+                    liveWorkoutStats.pct === 100
+                      ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+                      : 'bg-gothic animate-pulse'
+                  }`}
+                />
+                <span className="font-semibold text-brand">
+                  {liveWorkoutStats.pct === 100
+                    ? '¡Sesión 100% completada!'
+                    : `Progreso en vivo: ${liveWorkoutStats.completedSets}/${liveWorkoutStats.totalSets} series`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 font-mono text-[11px]">
+                {liveWorkoutStats.tonnageKg > 0 && (
+                  <span className="rounded-md border border-stoneborder bg-background/80 px-2 py-0.5 text-brand-muted">
+                    {liveWorkoutStats.tonnageKg.toLocaleString('es-ES')} kg
+                  </span>
+                )}
+                <span
+                  className={`font-bold ${
+                    liveWorkoutStats.pct === 100 ? 'text-emerald-400' : 'text-gothic'
+                  }`}
+                >
+                  {liveWorkoutStats.pct}%
+                </span>
+              </div>
+            </div>
+
+            <div className="h-2 w-full overflow-hidden rounded-full bg-background border border-stoneborder/70">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  liveWorkoutStats.pct === 100
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+                    : 'bg-gradient-to-r from-[#A88948] via-[#DEB868] to-emerald-400'
+                }`}
+                style={{ width: `${Math.max(4, liveWorkoutStats.pct)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* ================= WORKOUT BLOCKS ================= */}
         <div className="space-y-4">
           {activeWorkout.blocks.map((block) => {
@@ -661,17 +823,23 @@ export function WorkoutStudio() {
             return (
               <section
                 key={block.id}
-                className="rounded-2xl border border-stoneborder bg-surface p-4 space-y-4"
+                className="rounded-2xl border border-stoneborder bg-surface p-4 space-y-4 kairos-card-alive"
               >
-                {/* Clean Block Header */}
+                {/* Clean Block Header with vibrant discipline accent dot */}
                 <div className="flex items-center justify-between gap-2 border-b border-stoneborder pb-2.5">
-                  <input
-                    type="text"
-                    value={block.title}
-                    aria-label="Título del bloque"
-                    onChange={(e) => updateBlockTitle(block.id, e.target.value)}
-                    className="w-full truncate bg-transparent font-gothic text-[16px] font-semibold text-brand focus:outline-none"
-                  />
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: meta.accentHex }}
+                    />
+                    <input
+                      type="text"
+                      value={block.title}
+                      aria-label="Título del bloque"
+                      onChange={(e) => updateBlockTitle(block.id, e.target.value)}
+                      className="w-full truncate bg-transparent font-gothic text-[16px] font-semibold text-brand focus:outline-none"
+                    />
+                  </div>
 
                   <button
                     type="button"
@@ -702,7 +870,7 @@ export function WorkoutStudio() {
                   }
                   className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-stoneborder bg-background/70 py-2.5 text-xs font-medium text-brand-muted hover:border-gothic/50 hover:text-brand active:scale-[0.99]"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus className="h-3.5 w-3.5 text-gothic" />
                   Añadir ejercicio ({meta.label})
                 </button>
               </section>
@@ -715,7 +883,7 @@ export function WorkoutStudio() {
           <button
             type="button"
             onClick={() => setShowAddModeSheet((v) => !v)}
-            className="w-full flex items-center justify-between rounded-2xl border border-stoneborder bg-surface px-4 py-3.5 text-left transition-colors hover:border-gothic/50"
+            className="w-full flex items-center justify-between rounded-2xl border border-stoneborder bg-surface px-4 py-3.5 text-left transition-colors hover:border-gothic/50 kairos-card-alive"
           >
             <div className="flex items-center gap-2.5">
               <Plus className="h-4 w-4 text-gothic" />
@@ -752,7 +920,9 @@ export function WorkoutStudio() {
                     className="w-full flex items-center justify-between rounded-xl border border-stoneborder bg-background/70 px-3.5 py-2.5 text-left hover:border-gothic/50"
                   >
                     <div className="flex items-center gap-2.5">
-                      <Icon className="h-4 w-4 text-gothic shrink-0" />
+                      <span className="shrink-0" style={{ color: m.accentHex }}>
+                        <Icon className="h-4 w-4 shrink-0" />
+                      </span>
                       <div>
                         <span className="text-xs font-semibold text-brand block">{m.label}</span>
                         <span className="text-[11px] text-brand-muted">{m.description}</span>
@@ -797,9 +967,9 @@ export function WorkoutStudio() {
             <button
               type="button"
               onClick={handleFinishSession}
-              className="w-full flex items-center justify-center gap-2 rounded-2xl bg-brand py-3.5 px-5 text-xs font-bold uppercase tracking-widest text-background shadow-lg active:scale-[0.99]"
+              className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#DEB868] via-[#E8C87A] to-[#C89D48] py-3.5 px-5 text-xs font-bold uppercase tracking-widest text-[#0B0A0E] shadow-[0_6px_28px_rgba(222,184,104,0.3)] hover:brightness-105 active:scale-[0.99] transition-all"
             >
-              <Check className="h-4 w-4" />
+              <Check className="h-4 w-4 stroke-[2.5]" />
               Finalizar y Guardar Sesión
             </button>
           </div>

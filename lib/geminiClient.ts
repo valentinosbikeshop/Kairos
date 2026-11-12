@@ -42,47 +42,35 @@ const customModel = process.env.GEMINI_MODEL?.trim();
 
 const FULL_CASCADE_LADDER: readonly string[] = [
   ...(customModel ? [customModel] : []),
-  // Escalón 1: Generación de Vanguardia (Máxima potencia analítica y biomecánica profunda)
-  'gemini-3.8-pro',
+  // Escalón 1: Generación de Vanguardia (Gemini 4 & 3.8 Frontier)
+  'gemini-4-argon',
+  'gemini-4-carbon',
   'gemini-3.8-flash',
-  'gemini-3-pro',
-  'gemini-3-flash',
-  // Escalón 2: Generación 2.5
-  'gemini-2.5-pro',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  // Escalón 2: Respaldo de Alta Disponibilidad
   'gemini-2.5-flash',
-  // Escalón 3: Generación 2.0 (Alta velocidad y ultra disponibilidad)
+  'gemini-2.5-pro',
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  // Escalón 4: Generación 1.5 (Máxima estabilidad y respaldo histórico)
-  'gemini-1.5-pro',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
 ];
 
 const BALANCED_CASCADE_LADDER: readonly string[] = [
   ...(customModel ? [customModel] : []),
   'gemini-3.8-flash',
-  'gemini-3-flash',
+  'gemini-4-argon',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
-  'gemini-3.8-pro',
-  'gemini-2.5-pro',
-  'gemini-1.5-pro',
 ];
 
 const VISION_CASCADE_LADDER: readonly string[] = [
   ...(customModel ? [customModel] : []),
   'gemini-3.8-flash',
-  'gemini-3-flash',
+  'gemini-4-argon',
+  'gemini-4-carbon',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
-  'gemini-2.5-pro',
-  'gemini-3.8-pro',
 ];
 
 const MODEL_CASCADES: Record<GeminiPowerTier, readonly string[]> = {

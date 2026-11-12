@@ -635,6 +635,21 @@ export function PolymorphicExerciseCard({
 // SUB-TABLES FOR EACH POLYMORPHIC TRAINING MODE (UNCLUTTERED GOTHIC PALETTE)
 // ============================================================================
 
+function calculateBarbellPlatesPerSide(totalKg: number): string | null {
+  if (!totalKg || totalKg < 25) return null;
+  let rem = Math.round(((totalKg - 20) / 2) * 100) / 100;
+  if (rem <= 0) return null;
+  const denominations = [25, 20, 15, 10, 5, 2.5, 1.25];
+  const plates: number[] = [];
+  for (const plate of denominations) {
+    while (rem >= plate - 0.01 && plates.length < 6) {
+      plates.push(plate);
+      rem = Math.round((rem - plate) * 100) / 100;
+    }
+  }
+  return plates.length > 0 ? plates.join('+') : null;
+}
+
 function HypertrophyRows({
   sets,
   defaultRest,
@@ -646,6 +661,20 @@ function HypertrophyRows({
   onChangeSets: (next: HypertrophySet[]) => void;
   onToggleComplete: (completed: boolean, restSec: number) => void;
 }) {
+  const topSetStats = useMemo(() => {
+    let bestE1rm = 0;
+    let maxWeight = 0;
+    sets.forEach((s) => {
+      if (s.weightKg > maxWeight) maxWeight = s.weightKg;
+      const e1 = calculateE1RM(s.weightKg, s.reps);
+      if (e1 > bestE1rm) bestE1rm = e1;
+    });
+    return {
+      bestE1rm: Math.round(bestE1rm * 10) / 10,
+      platesPerSide: calculateBarbellPlatesPerSide(maxWeight),
+    };
+  }, [sets]);
+
   const addSet = () => {
     const last = sets[sets.length - 1];
     onChangeSets([
@@ -785,7 +814,24 @@ function HypertrophyRows({
         </div>
       )}
 
-      <div className="flex justify-end pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        {topSetStats.bestE1rm > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-brand-muted">
+            <span className="rounded-md border border-gothic/25 bg-gothic/10 px-1.5 py-0.5 text-gothic">
+              e1RM {topSetStats.bestE1rm} kg
+            </span>
+            {topSetStats.platesPerSide && (
+              <span
+                title="Discos por lado usando barra olímpica de 20 kg"
+                className="rounded-md border border-stoneborder bg-background/80 px-1.5 py-0.5 text-brand-muted"
+              >
+                Barra 20 + [{topSetStats.platesPerSide}]/lado
+              </span>
+            )}
+          </div>
+        ) : (
+          <span />
+        )}
         <button
           type="button"
           onClick={addSet}
@@ -972,7 +1018,27 @@ function StrengthRows({
         </div>
       )}
 
-      <div className="flex justify-end pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        {bestLiveE1rm > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-brand-muted">
+            <span className="rounded-md border border-gothic/25 bg-gothic/10 px-1.5 py-0.5 text-gothic">
+              e1RM {Math.round(bestLiveE1rm * 10) / 10} kg
+            </span>
+            {sets.length > 0 &&
+              calculateBarbellPlatesPerSide(Math.max(...sets.map((x) => x.weightKg || 0))) && (
+                <span
+                  title="Discos por lado usando barra olímpica de 20 kg"
+                  className="rounded-md border border-stoneborder bg-background/80 px-1.5 py-0.5 text-brand-muted"
+                >
+                  Barra 20 + [
+                  {calculateBarbellPlatesPerSide(Math.max(...sets.map((x) => x.weightKg || 0)))}
+                  ]/lado
+                </span>
+              )}
+          </div>
+        ) : (
+          <span />
+        )}
         <button
           type="button"
           onClick={addSet}

@@ -14,7 +14,7 @@ import {
   populateRoutineDayByFocus,
   resolveTodayRoutineStatus,
 } from '../lib/aiRoutineEngine';
-import { parseAgenticUserCommand } from '../lib/aiChatEngine';
+import { parseAgenticUserCommand, generateScientificAiResponse } from '../lib/aiChatEngine';
 import {
   detectOutOfContextExerciseWords,
   resolveExerciseIntelligently,
@@ -271,6 +271,29 @@ async function runProductionSuite() {
     throw new Error('FALLO: resolveExerciseIntelligently no generó deepProfile.');
   }
   console.log(`✅ 11. Inteligencia biomecánica profunda (${deepResolved.canonicalName} -> SFR ${deepResolved.deepProfile.sfrScore}/10) y detector de palabras fuera de contexto verificados.`);
+
+  // Test 12: Coherencia integral del Motor de IA (Consultas naturales, chips, fat loss sin falsos positivos, fuera de dominio)
+  const restRes = await generateScientificAiResponse('¿Cuánto debo descansar entre series hoy?', chatCtx);
+  if (!restRes.content.includes('fosfocreatina') || restRes.suggestedActions.length === 0) {
+    throw new Error('FALLO: Respuesta de descanso entre series incompleta.');
+  }
+  const fatLossRes = await generateScientificAiResponse('¿Cómo elimino grasa sin perder músculo?', chatCtx);
+  if (fatLossRes.content.includes('No detecté palabras intrusas')) {
+    throw new Error('FALLO CRÍTICO: "elimino grasa" cayó en falso positivo de limpieza de rutina.');
+  }
+  const subRes = await generateScientificAiResponse('Máquina ocupada o molestia articular: dame un sustituto', chatCtx);
+  if (!subRes.content.includes('Sustitución Biomecánica') || subRes.suggestedActions.length === 0) {
+    throw new Error('FALLO: Respuesta de sustitución biomecánica incompleta.');
+  }
+  const sleepRes = await generateScientificAiResponse('Dormí mal hoy (5 horas), ¿cómo ajusto mi rutina?', chatCtx);
+  if (!sleepRes.content.includes('Autorregulación') || !sleepRes.content.includes('RIR')) {
+    throw new Error('FALLO: Respuesta de autoregulación por sueño incompleta.');
+  }
+  const offTopicRes = await generateScientificAiResponse('Dame una receta de pizza napolitana o habla de política', chatCtx);
+  if (!offTopicRes.content.includes('exclusivamente a')) {
+    throw new Error('FALLO: Guardrail de enfoque temático no redirigió consulta fuera de dominio.');
+  }
+  console.log('✅ 12. Coherencia integral del Motor de IA verificada (Descansos, Recomposición sin falsos positivos, Sustitutos, Sueño/HRV y Guardrail de dominio).');
 
   console.log('--- TODOS LOS TESTS DE PRODUCCIÓN Y PERSISTENCIA PASARON CON ÉXITO (100%) ---');
 }

@@ -72,9 +72,9 @@ export async function POST(req: NextRequest) {
         sampleCount: body.samples?.length || 0,
       },
     });
-  } catch (error: any) {
+  } catch {
     return NextResponse.json(
-      { success: false, error: error.message || 'Error interno al procesar sincronización de salud.' },
+      { success: false, error: 'Error interno al procesar sincronización de salud.' },
       { status: 500 }
     );
   }

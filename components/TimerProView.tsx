@@ -115,12 +115,14 @@ export function TimerProView() {
   const strokeDashoffset = ringCircumference * (1 - activeFraction);
 
   const ringStrokeHex = !snapshot.isActive
-    ? '#27242E'
+    ? '#2A2736'
     : snapshot.phase === 'prep'
-      ? '#8A7960'
-      : snapshot.phase === 'finished'
-        ? '#6F917C'
-        : '#B5A082';
+      ? '#F59E0B'
+      : snapshot.phase === 'rest'
+        ? '#38BDF8'
+        : snapshot.phase === 'finished'
+          ? '#10B981'
+          : '#DEB868';
 
   const statusHeadline = !snapshot.isActive
     ? 'En calma'

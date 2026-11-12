@@ -308,8 +308,8 @@ export function AudioMixerPanel() {
           )}
         </div>
         <p className="text-[11px] text-brand-muted leading-relaxed">
-          KAIROS atenúa ligeramente tu música (ducking) durante 0.3s al sonar cada pitido sin pausar
-          Apple Music. En iPhone, asegúrate de no tener activado el modo Silencio del dispositivo.
+          KAIROS cuenta con bypass acústico para sonar con claridad incluso si tu celular tiene
+          activado el modo silencio o el interruptor físico en silencio, sin pausar tu música en segundo plano.
         </p>
       </div>
     </div>

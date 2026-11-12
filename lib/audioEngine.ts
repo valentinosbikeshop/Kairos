@@ -15,19 +15,19 @@ export const SOUND_PROFILE_META: Record<
   { name: string; subtitle: string; badge: string }
 > = {
   minimal: {
-    name: 'Kairos Minimal',
-    subtitle: 'Sinusoidal puro 880Hz + acorde armónico 1318.5Hz',
-    badge: 'Por Defecto',
+    name: 'Beep Digital Clásico',
+    subtitle: 'El pitido tradicional de cronómetro de gimnasio y Tabata (3, 2, 1... ¡BEEP!)',
+    badge: 'Popular #1',
   },
   boxing: {
     name: 'Campana de Boxeo',
-    subtitle: 'Síntesis FM metálica inarmónica de ring',
-    badge: 'Ring FM',
+    subtitle: 'La clásica campana metálica de asaltos y ring de combate (¡DING!)',
+    badge: 'Popular #2',
   },
   tactical: {
-    name: 'Pulso Táctico',
-    subtitle: 'Triangular 1200Hz doble-bip anti sub-bass',
-    badge: 'Alta Penetración',
+    name: 'Chicharra Deportiva',
+    subtitle: 'El buzzer clásico de pared de CrossFit y marcador de cancha (¡BZZZT!)',
+    badge: 'Popular #3',
   },
 };
 
@@ -455,38 +455,32 @@ class KairosAudioEngine {
 
   /**
    * Pulso rítmico suave de cadencia por segundo durante sostenimientos isométricos (Planche, Front Lever, L-Sit),
-   * a frecuencia cálida constante (380 Hz) sin fatiga auditiva.
+   * a frecuencia sutil y limpia (800 Hz, 45ms) tipo metrónomo, sin fatiga auditiva.
    */
   public playIsometricSecondPulse(): void {
     if (this.settings.gainPercent <= 0) return;
     this.withRunningContext((ctx, master, now) => {
       const osc = ctx.createOscillator();
-      const filter = ctx.createBiquadFilter();
       const env = ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(380, now);
-
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(800, now);
+      osc.frequency.setValueAtTime(800, now);
 
       env.gain.setValueAtTime(0.0001, now);
-      env.gain.linearRampToValueAtTime(0.32, now + 0.012);
-      env.gain.setValueAtTime(0.28, now + 0.075);
-      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+      env.gain.linearRampToValueAtTime(0.22, now + 0.003);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
 
-      osc.connect(filter);
-      filter.connect(env);
+      osc.connect(env);
       env.connect(master);
       osc.start(now);
-      osc.stop(now + 0.15);
+      osc.stop(now + 0.05);
     });
   }
 
   /**
-   * Reproduce los beeps de cuenta regresiva (5, 4, 3, 2, 1) a TONO CONSTANTE (nunca sube de agudeza).
-   * Los segundos 5, 4, 3 y 2 son pulsos cortos y definidos (~190ms), mientras que el último beep (1)
-   * antes del cambio es notablemente más alargado (~640ms) manteniendo exactamente el mismo tono cálido.
+   * Reproduce los beeps de cuenta regresiva (5, 4, 3, 2, 1) a tono constante y definido.
+   * Los segundos 5, 4, 3 y 2 son pulsos cortos y definidos (~100-160ms), mientras que el último beep (1)
+   * antes del cambio es alargado (~380-450ms) manteniendo exactamente el mismo tono.
    */
   public playCountdownPip(secondRemaining: 5 | 4 | 3 | 2 | 1 = 1): void {
     this.vibrate(secondRemaining === 1 ? [80, 40, 80] : 40);
@@ -510,118 +504,103 @@ class KairosAudioEngine {
     const profile = this.settings.profile;
     const isLastBeepBeforeChange = secondRemaining === 1;
 
-    // Duración: 5, 4, 3, 2 son cortos (190ms); el último beep (1) antes del cambio es alargado (640ms) al MISMO tono
-    const totalDur = isLastBeepBeforeChange ? 0.64 : 0.19;
-    const sustainEnd = isLastBeepBeforeChange ? 0.52 : 0.12;
-
     if (profile === 'minimal') {
-      // Perfil Minimal: Tono cálido de estudio constante a 440 Hz (La4) + sub-octava suave a 220 Hz, sin subir agudeza
-      const constFreq = 440;
+      // =========================================================================
+      // 1. BEEP DIGITAL CLÁSICO (GYMBOSS / TABATA TIMER / CRONÓMETRO DIGITAL)
+      // =========================================================================
+      // Pitido electrónico puro y cristalino a 1000 Hz.
+      // Segundos 5, 4, 3, 2: pip corto nítido (100ms).
+      // Segundo 1: pip alargado (380ms) al mismo tono exacto de 1000 Hz.
+      const constFreq = 1000;
+      const totalDur = isLastBeepBeforeChange ? 0.38 : 0.10;
+      const sustainEnd = isLastBeepBeforeChange ? 0.32 : 0.075;
+
       const osc = ctx.createOscillator();
-      const subOsc = ctx.createOscillator();
-      const filter = ctx.createBiquadFilter();
       const env = ctx.createGain();
-      const subGain = ctx.createGain();
 
       osc.type = 'sine';
       osc.frequency.setValueAtTime(constFreq, now);
 
-      subOsc.type = 'sine';
-      subOsc.frequency.setValueAtTime(constFreq * 0.5, now);
-      subGain.gain.setValueAtTime(0.24, now);
-
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(950, now);
-
       env.gain.setValueAtTime(0.0001, now);
-      env.gain.linearRampToValueAtTime(0.76, now + 0.015);
-      env.gain.setValueAtTime(0.7, now + sustainEnd);
+      env.gain.linearRampToValueAtTime(0.85, now + 0.003);
+      env.gain.setValueAtTime(0.80, now + sustainEnd);
       env.gain.exponentialRampToValueAtTime(0.0001, now + totalDur);
 
-      osc.connect(filter);
-      subOsc.connect(subGain);
-      subGain.connect(filter);
-      filter.connect(env);
+      osc.connect(env);
       env.connect(this.masterGain);
 
       osc.start(now);
-      subOsc.start(now);
-      osc.stop(now + totalDur + 0.02);
-      subOsc.stop(now + totalDur + 0.02);
+      osc.stop(now + totalDur + 0.01);
     } else if (profile === 'boxing') {
-      // Perfil Boxeo: Tono grave y cálido constante a 360 Hz (sin estridencia metálica ni subida de tono)
-      const constFreq = 360;
-      const osc = ctx.createOscillator();
-      const bodyOsc = ctx.createOscillator();
-      const filter = ctx.createBiquadFilter();
-      const bodyGain = ctx.createGain();
-      const env = ctx.createGain();
+      // =========================================================================
+      // 2. CAMPANA DE BOXEO (AVISO METÁLICO DE ASALTO)
+      // =========================================================================
+      // Toque metálico claro de badajo sobre campana de bronce (clink de aviso).
+      const totalDur = isLastBeepBeforeChange ? 0.45 : 0.16;
+      const partials = [
+        { freq: 880, amp: 0.50, decay: totalDur },
+        { freq: 1320, amp: 0.70, decay: totalDur * 0.9 },
+        { freq: 1760, amp: 0.40, decay: totalDur * 0.7 },
+        { freq: 2640, amp: 0.25, decay: totalDur * 0.5 },
+      ];
 
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(constFreq, now);
+      partials.forEach((p) => {
+        const osc = ctx.createOscillator();
+        const env = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(p.freq, now);
 
-      bodyOsc.type = 'sine';
-      bodyOsc.frequency.setValueAtTime(constFreq * 1.5, now);
-      bodyGain.gain.setValueAtTime(0.18, now);
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.linearRampToValueAtTime(p.amp, now + 0.002);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
 
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(880, now);
+        osc.connect(env);
+        env.connect(this.masterGain!);
 
-      env.gain.setValueAtTime(0.0001, now);
-      env.gain.linearRampToValueAtTime(0.82, now + 0.01);
-      env.gain.setValueAtTime(0.74, now + sustainEnd);
-      env.gain.exponentialRampToValueAtTime(0.0001, now + totalDur);
-
-      osc.connect(filter);
-      bodyOsc.connect(bodyGain);
-      bodyGain.connect(filter);
-      filter.connect(env);
-      env.connect(this.masterGain);
-
-      osc.start(now);
-      bodyOsc.start(now);
-      osc.stop(now + totalDur + 0.02);
-      bodyOsc.stop(now + totalDur + 0.02);
+        osc.start(now);
+        osc.stop(now + p.decay + 0.01);
+      });
     } else {
-      // Perfil Táctico (Rogue / Concept2 Chrono): Tono sólido y cálido constante a 500 Hz
-      const constFreq = 500;
-      const osc = ctx.createOscillator();
-      const subOsc = ctx.createOscillator();
+      // =========================================================================
+      // 3. CHICHARRA DEPORTIVA (BUZZER DE CROSSFIT / CANCHA)
+      // =========================================================================
+      // Pulso corto de chicharra electrónica de marcador (196 Hz con armónicos).
+      const totalDur = isLastBeepBeforeChange ? 0.40 : 0.11;
+      const sustainEnd = isLastBeepBeforeChange ? 0.34 : 0.085;
+
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
       const filter = ctx.createBiquadFilter();
-      const subGain = ctx.createGain();
       const env = ctx.createGain();
 
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(constFreq, now);
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(196, now);
+      osc2.type = 'sawtooth';
+      osc2.frequency.setValueAtTime(199, now);
 
-      subOsc.type = 'sine';
-      subOsc.frequency.setValueAtTime(constFreq * 0.5, now);
-      subGain.gain.setValueAtTime(0.3, now);
-
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(1100, now);
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(900, now);
+      filter.Q.setValueAtTime(2.2, now);
 
       env.gain.setValueAtTime(0.0001, now);
-      env.gain.linearRampToValueAtTime(0.85, now + 0.012);
-      env.gain.setValueAtTime(0.78, now + sustainEnd);
+      env.gain.linearRampToValueAtTime(0.85, now + 0.004);
+      env.gain.setValueAtTime(0.80, now + sustainEnd);
       env.gain.exponentialRampToValueAtTime(0.0001, now + totalDur);
 
-      osc.connect(filter);
-      subOsc.connect(subGain);
-      subGain.connect(filter);
+      osc1.connect(filter);
+      osc2.connect(filter);
       filter.connect(env);
       env.connect(this.masterGain);
 
-      osc.start(now);
-      subOsc.start(now);
-      osc.stop(now + totalDur + 0.02);
-      subOsc.stop(now + totalDur + 0.02);
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + totalDur + 0.02);
+      osc2.stop(now + totalDur + 0.02);
     }
   }
 
   /**
-   * Señal cálida, profunda y alargada (~0.95s - 1.15s) al llegar a 00:00 o cambiar de fase.
-   * Diseñada con filtros paso-bajo para sonar limpia, profesional y nunca aguda ni estridente.
+   * Señal clara y contundente al llegar a 00:00 o cambiar de fase (trabajo / descanso).
    */
   public playCompletionCue(cueType: 'finish' | 'work' | 'rest' = 'finish'): void {
     this.vibrate(cueType === 'rest' ? [100, 50, 120] : [160, 60, 240]);
@@ -642,96 +621,114 @@ class KairosAudioEngine {
     const profile = this.settings.profile;
 
     if (profile === 'minimal') {
-      // Acorde cálido de estudio sostenido (0.95s) en registro medio-grave relajante y redondo
-      const rootFreq = cueType === 'rest' ? 329.63 : 440; // E4 para descanso, A4 para trabajo/fin
-      const fifthFreq = cueType === 'rest' ? 440 : 554.37; // Quinta/Tercera cálida sin agudos
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(1000, now);
-      filter.connect(this.masterGain);
+      // =========================================================================
+      // 1. BEEP DIGITAL CLÁSICO: GO / CAMBIO DE SERIE (GYMBOSS / TABATA)
+      // =========================================================================
+      // El tradicional pitido largo y firme de cambio (salto digital 1000 Hz -> 2000 Hz, 0.65s).
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
 
-      const voices = [
-        { freq: rootFreq * 0.5, type: 'sine' as OscillatorType, amp: 0.35 },
-        { freq: rootFreq, type: 'sine' as OscillatorType, amp: 0.72 },
-        { freq: fifthFreq, type: 'triangle' as OscillatorType, amp: 0.38 },
-      ];
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1000, now);
+      osc.frequency.setValueAtTime(1000, now + 0.10);
+      osc.frequency.setValueAtTime(2000, now + 0.105);
 
-      voices.forEach(({ freq, type, amp }) => {
-        const osc = ctx.createOscillator();
-        const env = ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, now);
+      env.gain.setValueAtTime(0.0001, now);
+      env.gain.linearRampToValueAtTime(0.92, now + 0.003);
+      env.gain.setValueAtTime(0.88, now + 0.58);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.65);
 
-        env.gain.setValueAtTime(0.0001, now);
-        env.gain.linearRampToValueAtTime(amp, now + 0.02);
-        env.gain.setValueAtTime(amp * 0.85, now + 0.68);
-        env.gain.exponentialRampToValueAtTime(0.0001, now + 0.96);
+      osc.connect(env);
+      env.connect(this.masterGain);
 
-        osc.connect(env);
-        env.connect(filter);
-        osc.start(now);
-        osc.stop(now + 0.98);
-      });
+      osc.start(now);
+      osc.stop(now + 0.66);
     } else if (profile === 'boxing') {
-      // Gong de bronce grave y profundo (392 Hz fundamental filtrada a 1150 Hz, 1.15s de resonancia cálida)
-      const baseFreq = cueType === 'rest' ? 330 : 392;
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(1150, now);
-      filter.connect(this.masterGain);
+      // =========================================================================
+      // 2. CAMPANA DE BOXEO: CAMPANAZO DE ASALTO (¡DING!)
+      // =========================================================================
+      // Auténtico campanazo de ring de boxeo de bronce (D5, D6, F6, A6, D7 con decaimiento natural).
+      const strikeBell = (strikeTime: number, decaySec: number) => {
+        const clickOsc = ctx.createOscillator();
+        const clickGain = ctx.createGain();
+        clickOsc.type = 'triangle';
+        clickOsc.frequency.setValueAtTime(2400, strikeTime);
+        clickGain.gain.setValueAtTime(0.40, strikeTime);
+        clickGain.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.025);
+        clickOsc.connect(clickGain);
+        clickGain.connect(this.masterGain!);
+        clickOsc.start(strikeTime);
+        clickOsc.stop(strikeTime + 0.03);
 
-      const partials = [
-        { ratio: 0.5, amp: 0.45, decay: 1.15, type: 'sine' as OscillatorType },
-        { ratio: 1.0, amp: 0.78, decay: 1.1, type: 'triangle' as OscillatorType },
-        { ratio: 1.498, amp: 0.36, decay: 0.85, type: 'sine' as OscillatorType },
-      ];
+        const partials = [
+          { freq: 587.33, amp: 0.45, decay: decaySec }, // Hum tone (D5)
+          { freq: 1174.66, amp: 0.85, decay: decaySec * 0.9 }, // Prime strike (D6)
+          { freq: 1396.91, amp: 0.60, decay: decaySec * 0.7 }, // Tierce (F6)
+          { freq: 1760.00, amp: 0.50, decay: decaySec * 0.6 }, // Quint (A6)
+          { freq: 2349.32, amp: 0.35, decay: decaySec * 0.4 }, // Nominal (D7)
+          { freq: 3520.00, amp: 0.20, decay: decaySec * 0.25 }, // High shimmer (A7)
+        ];
 
-      partials.forEach((p) => {
-        const osc = ctx.createOscillator();
-        const env = ctx.createGain();
-        osc.type = p.type;
-        osc.frequency.setValueAtTime(baseFreq * p.ratio, now);
+        partials.forEach((p) => {
+          const osc = ctx.createOscillator();
+          const env = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(p.freq, strikeTime);
 
-        env.gain.setValueAtTime(0.0001, now);
-        env.gain.linearRampToValueAtTime(p.amp, now + 0.01);
-        env.gain.setValueAtTime(p.amp * 0.76, now + 0.55);
-        env.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
+          env.gain.setValueAtTime(0.0001, strikeTime);
+          env.gain.linearRampToValueAtTime(p.amp, strikeTime + 0.003);
+          env.gain.exponentialRampToValueAtTime(0.0001, strikeTime + p.decay);
 
-        osc.connect(env);
-        env.connect(filter);
-        osc.start(now);
-        osc.stop(now + p.decay + 0.02);
-      });
+          osc.connect(env);
+          env.connect(this.masterGain!);
+
+          osc.start(strikeTime);
+          osc.stop(strikeTime + p.decay + 0.02);
+        });
+      };
+
+      if (cueType === 'work') {
+        // Doble campanazo tradicional de inicio de asalto ("¡DING! ... ¡DING!")
+        strikeBell(now, 1.4);
+        strikeBell(now + 0.26, 1.8);
+      } else {
+        // Campanazo único de fin de asalto / descanso
+        strikeBell(now, 2.0);
+      }
     } else {
-      // Cronógrafo Deportivo Rogue / Concept2: Bocina de gimnasio continua, grave-media y alargada (0.95s)
-      const baseFreq = cueType === 'rest' ? 400 : 500;
+      // =========================================================================
+      // 3. CHICHARRA DEPORTIVA: BOCINAZO DE MARCADOR / CROSSFIT (¡BZZZT!)
+      // =========================================================================
+      // Bocinazo fuerte y contundente de reloj de pared deportivo (0.72s).
+      const totalDur = 0.72;
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
       const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(1100, now);
-      filter.connect(this.masterGain);
+      const env = ctx.createGain();
 
-      const layers = [
-        { freq: baseFreq * 0.5, type: 'triangle' as OscillatorType, amp: 0.5 },
-        { freq: baseFreq, type: 'triangle' as OscillatorType, amp: 0.82 },
-        { freq: baseFreq * 1.25, type: 'sine' as OscillatorType, amp: 0.28 },
-      ];
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(185, now);
+      osc2.type = 'sawtooth';
+      osc2.frequency.setValueAtTime(189, now);
 
-      layers.forEach(({ freq, type, amp }) => {
-        const osc = ctx.createOscillator();
-        const env = ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, now);
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(850, now);
+      filter.Q.setValueAtTime(2.2, now);
 
-        env.gain.setValueAtTime(0.0001, now);
-        env.gain.linearRampToValueAtTime(amp, now + 0.015);
-        env.gain.setValueAtTime(amp * 0.88, now + 0.74);
-        env.gain.exponentialRampToValueAtTime(0.0001, now + 0.96);
+      env.gain.setValueAtTime(0.0001, now);
+      env.gain.linearRampToValueAtTime(0.95, now + 0.005);
+      env.gain.setValueAtTime(0.90, now + 0.65);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + totalDur);
 
-        osc.connect(env);
-        env.connect(filter);
-        osc.start(now);
-        osc.stop(now + 0.98);
-      });
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(env);
+      env.connect(this.masterGain);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + totalDur + 0.02);
+      osc2.stop(now + totalDur + 0.02);
     }
   }
 

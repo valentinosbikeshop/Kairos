@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useKairos } from '@/lib/kairosContext';
 import { kairosAudio, KairosAudioHealth, SOUND_PROFILE_META } from '@/lib/audioEngine';
 import { SoundProfile } from '@/types/kairos';
-import { Bell, Check, Minus, Plus, Radio, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { Bell, Check, Megaphone, Minus, Plus, Timer, Volume2, VolumeX, X } from 'lucide-react';
 
 /**
  * Discreet Gothic Header Button + Modal Sheet to adjust volume (0% - 200%),
@@ -139,9 +139,9 @@ export function AudioMixerPanel() {
   };
 
   const profiles: { id: SoundProfile; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: 'minimal', icon: Radio },
+    { id: 'minimal', icon: Timer },
     { id: 'boxing', icon: Bell },
-    { id: 'tactical', icon: Zap },
+    { id: 'tactical', icon: Megaphone },
   ];
 
   const isMuted = audioSettings.gainPercent === 0;
@@ -257,8 +257,13 @@ export function AudioMixerPanel() {
                     <Icon className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-brand">{meta.name}</div>
-                    <div className="text-[11px] text-brand-muted truncate">{meta.subtitle}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-semibold text-brand">{meta.name}</span>
+                      <span className="rounded-md border border-gothic/40 bg-gothic/10 px-1.5 py-0.2 text-[9px] font-mono text-gothic">
+                        {meta.badge}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-brand-muted truncate mt-0.5">{meta.subtitle}</div>
                   </div>
                 </div>
 

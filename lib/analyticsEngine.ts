@@ -10,7 +10,11 @@ import {
   WorkoutExercise,
   WorkoutSession,
 } from '@/types/kairos';
-import { synthesizeExerciseDeepProfile } from '@/lib/exerciseClassifierEngine';
+import {
+  applyGripAndVariantModifiers,
+  GRIP_VARIANT_OPTIONS,
+  synthesizeExerciseDeepProfile,
+} from '@/lib/exerciseClassifierEngine';
 import {
   calculateE1RM,
   calculateIsometricScore,
@@ -406,13 +410,20 @@ export function evaluateAllExercises(sessions: WorkoutSession[]): ExerciseEvalua
     const latest = points[points.length - 1];
     if (!latest) return;
 
-    const deepProfile =
+    const baseProf =
       sampleExercise.deepProfile ??
       synthesizeExerciseDeepProfile(
         sampleExercise.name,
         sampleExercise.mode,
-        sampleExercise.catalogId
+        sampleExercise.catalogId,
+        sampleExercise.gripVariant
       );
+    const deepProfile = applyGripAndVariantModifiers(
+      baseProf,
+      sampleExercise.name,
+      sampleExercise.mode,
+      sampleExercise.gripVariant
+    );
 
     if (points.length === 1) {
       evaluations.push({
@@ -841,9 +852,35 @@ export function computeMuscleFatigueReports(sessions: WorkoutSession[]): MuscleF
 
     session.blocks.forEach((block) => {
       block.exercises.forEach((ex) => {
-        const prof =
-          ex.deepProfile ??
-          synthesizeExerciseDeepProfile(ex.name, ex.mode, ex.catalogId);
+        // Resolve station/discipline context so Hyrox & Cardio exercises map to exact muscles
+        const stationHints =
+          ex.mode === 'hyrox' && ex.hyroxSets?.length
+            ? `${ex.name} ${ex.hyroxSets.map((s) => s.station).join(' ')}`
+            : ex.mode === 'cardio' && ex.cardioDiscipline
+              ? `${ex.name} ${ex.cardioDiscipline}`
+              : ex.name;
+
+        const baseProf =
+          ex.deepProfile && ex.mode !== 'hyrox'
+            ? ex.deepProfile
+            : synthesizeExerciseDeepProfile(
+                stationHints,
+                ex.mode,
+                ex.catalogId,
+                ex.gripVariant
+              );
+        const prof = applyGripAndVariantModifiers(
+          baseProf,
+          stationHints,
+          ex.mode,
+          ex.gripVariant
+        );
+
+        const gripOption =
+          ex.gripVariant && ex.gripVariant !== 'standard'
+            ? GRIP_VARIANT_OPTIONS.find((g) => g.id === ex.gripVariant)
+            : undefined;
+        const displayExName = gripOption ? `${ex.name} (${gripOption.shortLabel})` : ex.name;
 
         let workingSets = 0;
         let intensityMultiplier = 1.0;
@@ -914,7 +951,7 @@ export function computeMuscleFatigueReports(sessions: WorkoutSession[]): MuscleF
             8.5;
           b.cnsUnits += workingSets * (prof.cnsFatigueIndex / 10) * decayFactor;
           b.maxRemainingRecoveryHours = Math.max(b.maxRemainingRecoveryHours, remainingHours);
-          b.exercises.add(ex.name);
+          b.exercises.add(displayExName);
         });
 
         // Credit Necessary Secondary / Synergist Muscles (0.5x Synergist Sets)
@@ -934,7 +971,7 @@ export function computeMuscleFatigueReports(sessions: WorkoutSession[]): MuscleF
             b.maxRemainingRecoveryHours,
             Math.round(remainingHours * 0.65)
           );
-          b.exercises.add(`${ex.name} (Sinergista)`);
+          b.exercises.add(`${displayExName} (Sinergista)`);
         });
       });
     });

@@ -156,6 +156,17 @@ export interface CyclingSet {
   completed: boolean;
 }
 
+export type ExerciseGripVariant =
+  | 'standard'
+  | 'supino'
+  | 'prono'
+  | 'neutro'
+  | 'cuerda'
+  | 'barra_z'
+  | 'ancho'
+  | 'cerrado'
+  | 'unilateral';
+
 export type MovementPatternType =
   | 'Empuje Horizontal'
   | 'Empuje Vertical'
@@ -217,6 +228,10 @@ export interface ExerciseDeepProfile {
   biomechanicalCue: string;
   /** Coeficiente de fatiga acumulada por serie para cálculos analíticos (0.5 a 2.5) */
   fatigueCoefficient: number;
+  /** Variante de agarre o implemento aplicada sobre el análisis */
+  gripVariant?: ExerciseGripVariant;
+  /** Nota analítica específica explicando qué cambia biomecánicamente con el agarre/variante elegido */
+  variantAnalysisNote?: string;
   /** Indica si fue enriquecido por el motor de investigación profunda de IA */
   isAiResearched?: boolean;
   /** Fecha ISO en que fue investigado/enriquecido por el motor de IA */
@@ -243,6 +258,7 @@ export interface WorkoutExercise {
   defaultRestSeconds: number;
   targetWeightKg?: number;
   notes?: string;
+  gripVariant?: ExerciseGripVariant;
   calisthenicsSubType?: CalisthenicsSubType;
   cardioDiscipline?: CardioDiscipline;
   referenceOneRmKg?: number;

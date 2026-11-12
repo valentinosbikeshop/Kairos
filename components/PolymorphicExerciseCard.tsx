@@ -8,6 +8,7 @@ import {
   CalisthenicsSubType,
   CardioDiscipline,
   CyclingSet,
+  ExerciseGripVariant,
   HypertrophySet,
   HypertrophySetType,
   HyroxSet,
@@ -48,7 +49,11 @@ import {
   Timer,
   Trash2,
 } from 'lucide-react';
-import { synthesizeExerciseDeepProfile } from '@/lib/exerciseClassifierEngine';
+import {
+  applyGripAndVariantModifiers,
+  GRIP_VARIANT_OPTIONS,
+  synthesizeExerciseDeepProfile,
+} from '@/lib/exerciseClassifierEngine';
 import { ExerciseDeepProfileModal } from '@/components/ExerciseIntelligenceModal';
 
 interface TimeMmSsInputProps {
@@ -213,12 +218,28 @@ export function PolymorphicExerciseCard({
   const workoutDefaults = useMemo(() => getResolvedWorkoutDefaults(profile), [profile]);
   const [showDeepProfile, setShowDeepProfile] = useState(false);
 
-  const deepProfile = useMemo(
-    () =>
+  const deepProfile = useMemo(() => {
+    const base =
       exercise.deepProfile ??
-      synthesizeExerciseDeepProfile(exercise.name, exercise.mode, exercise.catalogId),
-    [exercise.deepProfile, exercise.name, exercise.mode, exercise.catalogId]
-  );
+      synthesizeExerciseDeepProfile(
+        exercise.name,
+        exercise.mode,
+        exercise.catalogId,
+        exercise.gripVariant
+      );
+    return applyGripAndVariantModifiers(
+      base,
+      exercise.name,
+      exercise.mode,
+      exercise.gripVariant
+    );
+  }, [
+    exercise.deepProfile,
+    exercise.name,
+    exercise.mode,
+    exercise.catalogId,
+    exercise.gripVariant,
+  ]);
 
   const isResearching = Boolean(
     researchingExercises[exercise.catalogId] ||
@@ -363,6 +384,43 @@ export function PolymorphicExerciseCard({
                 </>
               )}
             </button>
+
+            {(exercise.mode === 'hypertrophy' ||
+              exercise.mode === 'strength' ||
+              exercise.mode === 'calisthenics') && (
+              <select
+                aria-label="Seleccionar tipo de agarre o variante biomecánica"
+                title="Elegir tipo de agarre o implemento (ajusta automáticamente el análisis de músculos y fatiga)"
+                value={exercise.gripVariant ?? deepProfile.gripVariant ?? 'standard'}
+                onChange={(e) => {
+                  const nextGrip = e.target.value as ExerciseGripVariant;
+                  mutateExercise(blockId, exercise.id, (ex) => {
+                    const nextProfile = synthesizeExerciseDeepProfile(
+                      ex.name,
+                      ex.mode,
+                      ex.catalogId,
+                      nextGrip
+                    );
+                    return {
+                      ...ex,
+                      gripVariant: nextGrip,
+                      deepProfile: nextProfile,
+                    };
+                  });
+                }}
+                className={`rounded-lg border px-2 py-0.5 text-[10px] font-medium transition focus:outline-none ${
+                  (exercise.gripVariant ?? deepProfile.gripVariant ?? 'standard') !== 'standard'
+                    ? 'border-gothic/60 bg-gothic/15 text-gothic font-semibold'
+                    : 'border-stoneborder bg-background text-brand-muted hover:text-brand'
+                }`}
+              >
+                {GRIP_VARIANT_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id} className="bg-surface text-brand">
+                    Agarre: {opt.shortLabel}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="flex items-center gap-2 text-[11px] text-brand-muted mt-0.5 flex-wrap">
             <span className="font-medium text-brand/85">
@@ -383,6 +441,12 @@ export function PolymorphicExerciseCard({
               </>
             )}
           </div>
+          {deepProfile.variantAnalysisNote && (
+            <p className="mt-1.5 rounded-lg border border-gothic/30 bg-gothic/10 px-2.5 py-1 text-[10px] leading-snug text-brand/90">
+              <strong className="text-gothic">Variante activa:</strong>{' '}
+              {deepProfile.variantAnalysisNote}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-1 shrink-0">

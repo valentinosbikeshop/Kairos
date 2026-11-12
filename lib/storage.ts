@@ -15,6 +15,7 @@ const CACHED_USER_KEY = 'kairos_cached_user_v2';
 export interface ActiveWorkoutDraft {
   title: string;
   titlePlaceholder?: string;
+  customDateYmd?: string;
   startedAtMs: number;
   notes: string;
   blocks: WorkoutBlock[];

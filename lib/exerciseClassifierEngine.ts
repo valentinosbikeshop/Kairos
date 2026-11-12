@@ -1,6 +1,7 @@
 import {
   ExerciseCatalogItem,
   ExerciseDeepProfile,
+  ExerciseGripVariant,
   MovementPatternType,
   OutOfContextWordAnalysis,
   RirValue,
@@ -281,31 +282,324 @@ export function detectOutOfContextExerciseWords(rawInput: string): OutOfContextW
   };
 }
 
+export const GRIP_VARIANT_OPTIONS: {
+  id: ExerciseGripVariant;
+  label: string;
+  shortLabel: string;
+}[] = [
+  { id: 'standard', label: 'Estándar (Natural del ejercicio)', shortLabel: 'Estándar' },
+  { id: 'supino', label: 'Agarre Supino (Palmas arriba)', shortLabel: 'Supino' },
+  { id: 'prono', label: 'Agarre Prono (Palmas abajo)', shortLabel: 'Prono' },
+  { id: 'neutro', label: 'Agarre Neutro / Martillo', shortLabel: 'Neutro' },
+  { id: 'cuerda', label: 'Con Cuerda / Soga (Polea)', shortLabel: 'Cuerda' },
+  { id: 'barra_z', label: 'Barra Z / Angulada (EZ)', shortLabel: 'Barra Z' },
+  { id: 'ancho', label: 'Agarre / Postura Ancha', shortLabel: 'Ancho' },
+  { id: 'cerrado', label: 'Agarre / Postura Cerrada', shortLabel: 'Cerrado' },
+  { id: 'unilateral', label: 'Unilateral (1 Brazo / Pierna)', shortLabel: 'Unilateral' },
+];
+
+export function detectGripVariantFromText(rawName: string): ExerciseGripVariant {
+  const n = normalizeSearchText(rawName);
+  if (/\b(?:cuerda|soga)\b/.test(n) && !/\bsaltar|comba|jump\b/.test(n)) return 'cuerda';
+  if (/\b(?:barra\s*z|barra\s*ez|ez\s*bar|angulad[oa])\b/.test(n)) return 'barra_z';
+  if (/\b(?:supin[oa]|palmas?\s*arriba|inverso|chin\s*up)\b/.test(n)) return 'supino';
+  if (/\b(?:pron[oa]|palmas?\s*abajo)\b/.test(n)) return 'prono';
+  if (/\b(?:neutr[oa]|martillo|hammer|gironda|triangulo|paralelo)\b/.test(n)) return 'neutro';
+  if (/\b(?:unilateral|1\s*mano|una\s*mano|1\s*brazo|1\s*pierna|isolateral|serrucho)\b/.test(n))
+    return 'unilateral';
+  if (/\b(?:cerrad[oa]|estrech[oa]|close\s*grip)\b/.test(n)) return 'cerrado';
+  if (/\b(?:anch[oa]|abiert[oa]|wide\s*grip|sumo)\b/.test(n)) return 'ancho';
+  return 'standard';
+}
+
+export function applyGripAndVariantModifiers(
+  baseProfile: ExerciseDeepProfile,
+  rawName: string,
+  mode: TrainingMode,
+  explicitGrip?: ExerciseGripVariant
+): ExerciseDeepProfile {
+  const effectiveGrip =
+    explicitGrip && explicitGrip !== 'standard'
+      ? explicitGrip
+      : detectGripVariantFromText(rawName);
+
+  const prof: ExerciseDeepProfile = {
+    ...baseProfile,
+    primaryMuscles: [...baseProfile.primaryMuscles],
+    secondaryMuscles: [...baseProfile.secondaryMuscles],
+    stabilizerMuscles: [...baseProfile.stabilizerMuscles],
+    jointStress: {
+      level: baseProfile.jointStress.level,
+      joints: [...baseProfile.jointStress.joints],
+    },
+    gripVariant: effectiveGrip,
+  };
+
+  if (effectiveGrip === 'standard') {
+    return prof;
+  }
+
+  const normName = normalizeSearchText(rawName);
+  const isPull =
+    prof.movementPattern === 'Tracción Vertical' ||
+    prof.movementPattern === 'Tracción Horizontal' ||
+    /\b(?:jalon|dominada|remo|row|pull)\b/.test(normName);
+  const isPush =
+    prof.movementPattern === 'Empuje Horizontal' ||
+    prof.movementPattern === 'Empuje Vertical' ||
+    /\b(?:press|banca|fondo|flexion|push)\b/.test(normName);
+  const isCurl = /\b(?:curl|biceps)\b/.test(normName) && !/\b(?:femoral|isquio|leg)\b/.test(normName);
+  const isTriceps =
+    /\b(?:triceps|frances|rompecraneos|pushdown|extension.*codo|copa|katana|patada.*triceps)\b/.test(
+      normName
+    );
+  const isLowerBody =
+    prof.movementPattern === 'Dominante de Rodilla' ||
+    prof.movementPattern === 'Dominante de Cadera';
+
+  if (effectiveGrip === 'supino') {
+    if (isPull) {
+      prof.primaryMuscles = [
+        'Dorsal Ancho (Fibras Iliocostales / Inferiores en Elongación)',
+        'Bíceps Braquial (Cabeza Larga y Corta)',
+      ];
+      prof.secondaryMuscles = ['Redondo Mayor', 'Braquial Anterior', 'Trapecio Inferior'];
+      prof.jointStress.level = 'Bajo';
+      prof.variantAnalysisNote =
+        'Agarre Supino en Tracción: Alinea los codos en el plano sagital maximizando la extensión humeral del Dorsal Inferior e incrementa un ~25% el reclutamiento directo del Bíceps Braquial.';
+      prof.biomechanicalCue =
+        'Con agarre supino, lleva los codos pegados al torso hacia las caderas evitando encoger los hombros.';
+    } else if (isCurl) {
+      prof.primaryMuscles = ['Bíceps Braquial (Cabeza Corta y Larga - Máxima Supinación)'];
+      prof.secondaryMuscles = ['Braquial Anterior', 'Supinador Corto y Braquiorradial'];
+      prof.variantAnalysisNote =
+        'Agarre Supino en Curl: Combina flexión de codo y supinación radiocubital para máxima activación electromiográfica del Bíceps Braquial.';
+    } else if (isTriceps) {
+      prof.primaryMuscles = ['Tríceps Braquial (Énfasis Cabeza Medial)'];
+      prof.secondaryMuscles = ['Tríceps Braquial (Cabeza Lateral)', 'Ancóneo'];
+      prof.stabilizerMuscles = ['Supinadores y Flexores del Antebrazo', ...prof.stabilizerMuscles];
+      prof.variantAnalysisNote =
+        'Agarre Supino en Tríceps: Desplaza el énfasis hacia la cabeza medial del tríceps y exige alta estabilización isométrica de muñeca.';
+    } else if (isPush) {
+      prof.primaryMuscles = ['Pectoral Mayor (Haz Clavicular / Superior)', 'Tríceps Braquial'];
+      prof.secondaryMuscles = ['Deltoides Anterior', 'Bíceps Braquial (Cabeza Larga - Estabilizador)'];
+      prof.jointStress.level = 'Bajo';
+      prof.variantAnalysisNote =
+        'Agarre Supino en Empuje: Incrementa la flexión sagital del hombro (+25% activación del Pectoral Clavicular) y reduce el pinzamiento subacromial.';
+    } else {
+      prof.variantAnalysisNote =
+        'Agarre Supino: Incrementa la participación de flexores supinadores (Bíceps Braquial) y alinea el codo en plano sagital.';
+    }
+  } else if (effectiveGrip === 'prono') {
+    if (isPull) {
+      prof.primaryMuscles = [
+        'Dorsal Ancho (Anchura Torácica Superior)',
+        'Redondo Mayor',
+        'Trapecio Medio e Inferior',
+      ];
+      prof.secondaryMuscles = ['Deltoides Posterior', 'Braquiorradial (Antebrazo)', 'Braquial Anterior'];
+      prof.variantAnalysisNote =
+        'Agarre Prono en Tracción: Abduce ligeramente el húmero enfatizando Redondo Mayor, Espalda Alta y Deltoides Posterior; en el codo reduce la ventaja del bíceps y transfiere carga al Braquiorradial.';
+    } else if (isCurl) {
+      prof.primaryMuscles = [
+        'Braquiorradial (Antebrazo)',
+        'Braquial Anterior',
+        'Extensores Radiales del Carpo',
+      ];
+      prof.secondaryMuscles = ['Bíceps Braquial (En Desventaja Mecánica por Pronación)'];
+      prof.variantAnalysisNote =
+        'Agarre Prono (Curl Inverso): La pronación radiocubital inhibe la línea de tracción del bíceps braquial, convirtiendo al Braquiorradial y Braquial Anterior en los agonistas primarios.';
+    } else if (isTriceps) {
+      prof.primaryMuscles = ['Tríceps Braquial (Cabeza Lateral y Medial)'];
+      prof.secondaryMuscles = ['Tríceps Braquial (Cabeza Larga)', 'Ancóneo'];
+      prof.variantAnalysisNote =
+        'Agarre Prono en Tríceps: Estabiliza la muñeca en pronación para aplicar máxima fuerza de bloqueo sobre la cabeza lateral y medial del tríceps.';
+    } else {
+      prof.variantAnalysisNote =
+        'Agarre Prono: Incrementa la demanda sobre extensores del antebrazo, Braquiorradial y cadena posterior escapular.';
+    }
+  } else if (effectiveGrip === 'neutro') {
+    prof.jointStress.level = 'Bajo';
+    prof.sfrScore = Math.min(10, prof.sfrScore + 1);
+    if (isPull) {
+      prof.primaryMuscles = [
+        'Dorsal Ancho (Fibras Medias e Inferiores)',
+        'Redondo Mayor',
+      ];
+      prof.secondaryMuscles = ['Braquiorradial', 'Braquial Anterior', 'Bíceps Braquial', 'Romboides'];
+      prof.variantAnalysisNote =
+        'Agarre Neutro en Tracción: Coloca el antebrazo en su ventaja mecánica óptima (palmas enfrentadas), potenciando el Dorsal Ancho y el Braquiorradial con mínimo estrés en hombro y codo.';
+    } else if (isCurl) {
+      prof.primaryMuscles = [
+        'Braquiorradial',
+        'Braquial Anterior',
+        'Bíceps Braquial (Cabeza Larga)',
+      ];
+      prof.secondaryMuscles = ['Extensores y Flexores del Carpo (Estabilidad Radial)'];
+      prof.variantAnalysisNote =
+        'Agarre Neutro (Martillo): Enfatiza el Braquiorradial, el Braquial Anterior (que empuja al bíceps hacia afuera dando grosor al brazo) y la cabeza larga del bíceps sin estrés valgo en muñeca.';
+    } else if (isPush || isTriceps) {
+      prof.primaryMuscles = isTriceps
+        ? ['Tríceps Braquial (Cabeza Lateral, Larga y Medial)']
+        : ['Pectoral Mayor (Porción Esternal y Clavicular)', 'Tríceps Braquial'];
+      prof.variantAnalysisNote =
+        'Agarre Neutro en Empuje/Tríceps: Alinea el húmero en el plano escapular (~30–45°), protegiendo el manguito rotador y maximizando la transferencia de fuerza al Tríceps y Pectoral.';
+    } else {
+      prof.variantAnalysisNote =
+        'Agarre Neutro: Alinea radio y cúbito reduciendo el estrés articular en muñeca, codo y hombro (+SFR).';
+    }
+  } else if (effectiveGrip === 'cuerda') {
+    prof.equipmentType = 'Polea con Cuerda';
+    prof.jointStress.level = 'Bajo';
+    prof.sfrScore = Math.min(10, prof.sfrScore + 1);
+    prof.cnsFatigueIndex = Math.max(2, prof.cnsFatigueIndex - 1);
+    prof.fatigueCoefficient = Math.max(0.65, Math.round((prof.fatigueCoefficient - 0.1) * 100) / 100);
+    if (isTriceps) {
+      prof.primaryMuscles = [
+        'Tríceps Braquial (Cabeza Lateral y Cabeza Larga en Acortamiento Pico)',
+        'Tríceps Braquial (Cabeza Medial)',
+      ];
+      prof.resistanceProfile = 'Pico en Contracción (Shortened)';
+      prof.variantAnalysisNote =
+        'Variante con Cuerda en Tríceps: Permite separar las manos y pronar al final de la extensión con ligera extensión humeral, logrando acortamiento máximo de la cabeza lateral y larga del tríceps sin forzar muñecas ni codos (SFR 10/10).';
+      prof.biomechanicalCue =
+        'Al extender los codos, separa las puntas de la cuerda hacia afuera manteniendo los brazos fijos a los costados.';
+    } else if (isCurl) {
+      prof.primaryMuscles = [
+        'Bíceps Braquial (Supinación Progresiva)',
+        'Braquiorradial y Braquial Anterior',
+      ];
+      prof.variantAnalysisNote =
+        'Variante con Cuerda en Bíceps: Permite iniciar el movimiento en agarre neutro (fuerte para el braquiorradial) y supinar libremente en la cima para máxima contracción del bíceps.';
+    } else if (isPull) {
+      prof.variantAnalysisNote =
+        'Variante con Cuerda en Tracción/Pullover: Elimina el tope de una barra rígida contra el cuerpo, aumentando el rango de recorrido final en Dorsal Ancho, Deltoides Posterior y Trapecio Medio.';
+    } else {
+      prof.variantAnalysisNote =
+        'Variante con Cuerda: Libertad rotacional completa en muñecas y codos, mayor rango de contracción y menor estrés articular.';
+    }
+  } else if (effectiveGrip === 'barra_z') {
+    prof.equipmentType = 'Barra Z (Angulada)';
+    prof.jointStress.level = 'Bajo';
+    prof.sfrScore = Math.min(10, prof.sfrScore + 1);
+    if (isCurl) {
+      prof.primaryMuscles = [
+        'Bíceps Braquial (Énfasis Cabeza Larga)',
+        'Braquial Anterior',
+      ];
+      prof.secondaryMuscles = ['Braquiorradial', 'Flexores del Antebrazo'];
+      prof.variantAnalysisNote =
+        'Variante en Barra Z (Curl): El ángulo semi-supinado (~25°) elimina la torsión forzada en muñecas y epitróclea del codo, repartiendo la tensión entre el Bíceps Braquial y el Braquial Anterior.';
+    } else if (isTriceps) {
+      prof.primaryMuscles = [
+        'Tríceps Braquial (Cabeza Larga y Lateral)',
+        'Tríceps Braquial (Cabeza Medial)',
+      ];
+      prof.variantAnalysisNote =
+        'Variante en Barra Z (Tríceps): Alinea los codos evitando que se abran excesivamente y reduce la tensión sobre el tendón distal del tríceps y las muñecas.';
+    } else {
+      prof.variantAnalysisNote =
+        'Variante en Barra Z: Angulación ergonómica que reduce el estrés radiocubital en muñecas y codos.';
+    }
+  } else if (effectiveGrip === 'ancho') {
+    if (isPull) {
+      prof.primaryMuscles = [
+        'Redondo Mayor',
+        'Dorsal Ancho (Fibras Superiores - Anchura Torácica)',
+        'Trapecio Medio',
+      ];
+      prof.variantAnalysisNote =
+        'Agarre Ancho en Tracción: Incrementa la abducción frontal del hombro enfatizando el Redondo Mayor y las fibras superiores del Dorsal Ancho con un recorrido de codo más corto.';
+    } else if (isPush) {
+      prof.primaryMuscles = ['Pectoral Mayor (Porción Esternocostal Externa)'];
+      prof.secondaryMuscles = ['Deltoides Anterior', 'Tríceps Braquial (Menor Recorrido)'];
+      prof.jointStress.level = 'Moderado';
+      prof.variantAnalysisNote =
+        'Agarre Ancho en Empuje: Maximiza el brazo de momento sobre el Pectoral Mayor y reduce los grados de extensión del codo (menor participación de tríceps, mayor carga en hombro/pectoral).';
+    } else if (isLowerBody) {
+      prof.primaryMuscles = ['Glúteo Mayor', 'Aductor Mayor', 'Cuádriceps'];
+      prof.variantAnalysisNote =
+        'Postura Ancha / Sumo: Incrementa la abducción de cadera reclutando con mayor intensidad el Aductor Mayor y el Glúteo Mayor, y acortando el brazo de momento lumbar.';
+    } else {
+      prof.variantAnalysisNote =
+        'Agarre Ancho: Aumenta el brazo de momento externo enfatizando las fibras externas del grupo muscular principal.';
+    }
+  } else if (effectiveGrip === 'cerrado') {
+    if (isPush) {
+      prof.primaryMuscles = [
+        'Tríceps Braquial (Cabeza Lateral y Medial)',
+        'Pectoral Mayor (Porción Clavicular e Interna)',
+      ];
+      prof.secondaryMuscles = ['Deltoides Anterior'];
+      prof.variantAnalysisNote =
+        'Agarre Cerrado en Empuje: Maximiza el rango de flexo-extensión de los codos, convirtiendo al Tríceps Braquial y al Pectoral Superior/Interno en los motores principales.';
+    } else if (isPull) {
+      prof.primaryMuscles = ['Dorsal Ancho (Fibras Inferiores - Mayor Rango)', 'Bíceps y Braquial'];
+      prof.variantAnalysisNote =
+        'Agarre Cerrado en Tracción: Permite el mayor rango de recorrido desde el estiramiento completo hasta la extensión sagital del hombro, enfatizando el Dorsal Inferior.';
+    } else if (isLowerBody) {
+      prof.primaryMuscles = ['Cuádriceps (Vasto Lateral y Recto Femoral)'];
+      prof.secondaryMuscles = ['Glúteo Mayor'];
+      prof.variantAnalysisNote =
+        'Postura Cerrada / Estrecha: Incrementa el desplazamiento anterior de la rodilla (dorsiflexión), concentrando la tensión mecánica sobre los Cuádriceps.';
+    } else {
+      prof.variantAnalysisNote =
+        'Agarre Cerrado: Amplía el rango de recorrido articular y enfatiza los extensores/flexores de codo.';
+    }
+  } else if (effectiveGrip === 'unilateral') {
+    prof.sfrScore = Math.min(10, prof.sfrScore + 1);
+    prof.cnsFatigueIndex = Math.max(2, prof.cnsFatigueIndex - 1);
+    prof.fatigueCoefficient = Math.max(0.65, Math.round((prof.fatigueCoefficient - 0.1) * 100) / 100);
+    if (!prof.stabilizerMuscles.some((m) => /oblicuo|antirrotacional/i.test(m))) {
+      prof.stabilizerMuscles = ['Oblicuos y Core Antirrotacional', ...prof.stabilizerMuscles];
+    }
+    prof.variantAnalysisNote =
+      'Ejecución Unilateral (1 extremidad): Elimina el déficit bilateral permitiendo mayor reclutamiento de unidades motoras por lado, corrige asimetrías, reduce la fatiga sistémica del SNC (-1 pt) y exige estabilización de Oblicuos y Core Antirrotacional.';
+  }
+
+  return prof;
+}
+
 /**
  * Synthesizes a complete, scientific biomechanical and physiological profile (ExerciseDeepProfile)
- * for any canonical or user-created exercise.
+ * for any canonical or user-created exercise, dynamically applying grip/variant modifiers.
  */
 export function synthesizeExerciseDeepProfile(
   rawName: string,
   targetMode?: TrainingMode,
-  catalogId?: string
+  catalogId?: string,
+  gripVariant?: ExerciseGripVariant
 ): ExerciseDeepProfile {
+  // Gracefully handle if caller passed a grip variant directly in 3rd parameter position
+  let effectiveCatalogId = catalogId;
+  let effectiveGrip = gripVariant;
+  if (
+    catalogId &&
+    ['standard', 'supino', 'prono', 'neutro', 'cuerda', 'barra_z', 'ancho', 'cerrado', 'unilateral'].includes(
+      catalogId
+    ) &&
+    !gripVariant
+  ) {
+    effectiveGrip = catalogId as ExerciseGripVariant;
+    effectiveCatalogId = undefined;
+  }
+
   const clean = sanitizeExerciseName(rawName) || rawName.trim();
   const norm = normalizeSearchText(clean);
 
   const catalogItem =
-    (catalogId ? BUILTIN_EXERCISES.find((b) => b.id === catalogId) : undefined) ||
+    (effectiveCatalogId ? BUILTIN_EXERCISES.find((b) => b.id === effectiveCatalogId) : undefined) ||
     BUILTIN_EXERCISES.find(
       (b) =>
         normalizeSearchText(b.name) === norm ||
         b.aliases?.some((a) => normalizeSearchText(a) === norm)
     );
 
-  if (catalogItem?.deepProfile) {
-    return catalogItem.deepProfile;
-  }
-
   const mode: TrainingMode = catalogItem?.mode || targetMode || 'hypertrophy';
+
+  if (catalogItem?.deepProfile) {
+    return applyGripAndVariantModifiers(catalogItem.deepProfile, rawName, mode, effectiveGrip);
+  }
 
   // 1. Determine Equipment Type
   let equipmentType: ExerciseDeepProfile['equipmentType'] = 'Barra';
@@ -719,20 +1013,89 @@ export function synthesizeExerciseDeepProfile(
     recoveryHours = 24;
     optimalRepRange = '12–20 reps / 45s';
     fatigueCoefficient = 0.65;
+  } else if (/\b(?:aducci[oó]n|aductor(?:es)?)\b/i.test(clean)) {
+    // Hip Adductors
+    primaryMuscles = ['Aductor Mayor, Largo y Corto (Glúteos y Cadera)'];
+    secondaryMuscles = ['Grácil y Pectíneo', 'Glúteo Mayor (Fibras Inferiores)'];
+    stabilizerMuscles = ['Core y Suelo Pélvico'];
+    movementPattern = 'Dominante de Cadera';
+    mechanicType = 'Aislamiento';
+    resistanceProfile = 'Pico en Estiramiento (Lengthened)';
+    sfrScore = 9;
+    cnsFatigueIndex = 2;
+    localFatigueIndex = 7;
+    jointStress = { level: 'Bajo', joints: ['Cadera ( Pubis / Inguinal)'] };
+    recoveryHours = 24;
+    optimalRepRange = '12–20 reps';
+    fatigueCoefficient = 0.7;
+  } else if (/\b(?:antebrazo[s]?|mu[ñn]eca[s]?|wrist|farmer|granjero|paseo)\b/i.test(clean) && mode !== 'hyrox') {
+    // Forearms / Grip / Carries
+    primaryMuscles = ['Bíceps y Antebrazo (Flexores y Extensores del Carpo / Braquiorradial)'];
+    secondaryMuscles = ['Trapecio Superior y Medio', 'Core Antilateral'];
+    stabilizerMuscles = ['Manguito Rotador', 'Glúteo Medio'];
+    movementPattern = 'Aislamiento';
+    mechanicType = 'Aislamiento';
+    resistanceProfile = 'Constante / Lineal';
+    sfrScore = 9;
+    cnsFatigueIndex = 3;
+    localFatigueIndex = 7;
+    jointStress = { level: 'Bajo', joints: ['Muñeca', 'Codo'] };
+    recoveryHours = 24;
+    optimalRepRange = '12–20 reps / 45s';
+    fatigueCoefficient = 0.7;
+  } else if (/\b(?:clean|snatch|jerk|cargada|arrancada|envi[oó]n|thruster|swing|kettlebell\s*swing|salto\s*al\s*caj[oó]n|box\s*jump)\b/i.test(clean)) {
+    // Olympic / Explosive Power / Kettlebell Ballistic
+    primaryMuscles = ['Glúteos y Cadera (Triple Extensión)', 'Cuádriceps', 'Trapecio y Deltoides'];
+    secondaryMuscles = ['Isquiosurales', 'Core y Erectores Espinales', 'Pantorrillas (Gemelos / Sóleo)'];
+    stabilizerMuscles = ['Manguito Rotador', 'Flexores del Antebrazo', 'Transverso Abdominal'];
+    movementPattern = 'Híbrido / Funcional';
+    mechanicType = 'Compuesto Multiarticular';
+    resistanceProfile = 'Pico en Estiramiento (Lengthened)';
+    sfrScore = 7;
+    cnsFatigueIndex = 9;
+    localFatigueIndex = 8;
+    jointStress = { level: 'Moderado', joints: ['Cadera', 'Rodilla', 'Hombro', 'Columna Lumbar'] };
+    recoveryHours = 48;
+    optimalRepRange = '3–8 reps explosivas';
+    fatigueCoefficient = 1.5;
   } else if (
     mode === 'hyrox' ||
     mode === 'cardio' ||
-    /\b(?:skierg|sled|trineo|burpees?|wall\s*balls?|farmers|granjero|sandbag|cuerda|comba|running|correr|sprint|nataci[oó]n|ciclismo|bici|stairmaster)\b/i.test(clean)
+    /\b(?:skierg|sled|trineo|burpees?|wall\s*balls?|farmers|granjero|sandbag|cuerda|comba|running|correr|sprint|nataci[oó]n|ciclismo|bici|stairmaster|el[ií]ptica)\b/i.test(clean)
   ) {
-    // Hyrox & Cardio
+    // Hyrox & Cardio with station-specific and discipline-specific muscle mapping
+    const isSkiOrRow = /\b(?:skierg|row|remo)\b/i.test(clean);
+    const isSledPushOrWallBall = /\b(?:sled\s*push|empuje\s*trineo|wall\s*balls?|sandbag|lunge)\b/i.test(clean);
+    const isSledPullOrFarmers = /\b(?:sled\s*pull|arrastre|farmers|granjero)\b/i.test(clean);
+    const isSwimming = /\b(?:nataci[oó]n|nado|crol|mariposa|braza)\b/i.test(clean);
+    const isJumpRope = /\b(?:cuerda|comba|jump\s*rope|saltos?\s*dobles?)\b/i.test(clean);
     const isHyroxStation =
       mode === 'hyrox' || /\b(?:skierg|sled|trineo|burpees?|wall\s*balls?|farmers|granjero|sandbag)\b/i.test(clean);
-    primaryMuscles = isHyroxStation
-      ? ['Cadena Posterior y Cuádriceps', 'Sistema Cardiorrespiratorio (Umbral de Lactato)']
-      : ['Sistema Cardiorrespiratorio (Oxidativo / VO2 Máx)', 'Tren Inferior Cíclico (Cuádriceps, Isquios y Pantorrillas)'];
-    secondaryMuscles = isHyroxStation
-      ? ['Deltoides, Dorsal Ancho y Trapecio', 'Core y Flexores del Antebrazo']
-      : ['Glúteo Mayor y Medio', 'Core Estabilizador'];
+
+    if (isSkiOrRow) {
+      primaryMuscles = ['Dorsal / Espalda', 'Sistema Cardiorrespiratorio (Umbral de Lactato)'];
+      secondaryMuscles = ['Tríceps Braquial', 'Core y Erectores Espinales', 'Cuádriceps'];
+    } else if (isSledPushOrWallBall) {
+      primaryMuscles = ['Cuádriceps', 'Glúteos y Cadera', 'Sistema Cardiorrespiratorio'];
+      secondaryMuscles = ['Deltoides (Anterior / Lateral)', 'Pantorrillas (Gemelos / Sóleo)', 'Core y Erectores Espinales'];
+    } else if (isSledPullOrFarmers) {
+      primaryMuscles = ['Trapecio / Romboides', 'Dorsal / Espalda', 'Glúteos y Cadera'];
+      secondaryMuscles = ['Bíceps y Antebrazo', 'Isquiosurales', 'Core y Erectores Espinales'];
+    } else if (isSwimming) {
+      primaryMuscles = ['Dorsal / Espalda', 'Deltoides (Anterior / Lateral)', 'Sistema Cardiorrespiratorio'];
+      secondaryMuscles = ['Tríceps Braquial', 'Core y Erectores Espinales', 'Cuádriceps'];
+    } else if (isJumpRope) {
+      primaryMuscles = ['Pantorrillas (Gemelos / Sóleo)', 'Sistema Cardiorrespiratorio'];
+      secondaryMuscles = ['Deltoides (Anterior / Lateral)', 'Bíceps y Antebrazo', 'Core y Erectores Espinales'];
+    } else {
+      primaryMuscles = isHyroxStation
+        ? ['Cuádriceps', 'Glúteos y Cadera', 'Sistema Cardiorrespiratorio (Umbral de Lactato)']
+        : ['Sistema Cardiorrespiratorio (Oxidativo / VO2 Máx)', 'Cuádriceps', 'Pantorrillas (Gemelos / Sóleo)'];
+      secondaryMuscles = isHyroxStation
+        ? ['Dorsal / Espalda', 'Deltoides (Anterior / Lateral)', 'Core y Erectores Espinales']
+        : ['Isquiosurales', 'Glúteos y Cadera', 'Core y Erectores Espinales'];
+    }
+
     stabilizerMuscles = ['Complejo Articular de Tobillo, Rodilla y Cadera', 'Core Antirrotacional'];
     movementPattern = isHyroxStation ? 'Híbrido / Funcional' : 'Cardio';
     mechanicType = 'Metabólico / Cíclico';
@@ -747,9 +1110,48 @@ export function synthesizeExerciseDeepProfile(
     recoveryHours = isHyroxStation ? 48 : 24;
     optimalRepRange = isHyroxStation ? 'bloques de distancia / tiempo' : 'ritmo continuo o intervalos';
     fatigueCoefficient = isHyroxStation ? 1.3 : 0.9;
+  } else {
+    // Universal fallback for any novel custom exercise not caught above:
+    // Infer anatomical group from keywords or training mode so it NEVER uses generic placeholders
+    if (/\b(?:pecho|pectoral|empuje|push)\b/i.test(clean)) {
+      primaryMuscles = ['Pectoral Mayor'];
+      secondaryMuscles = ['Deltoides Anterior', 'Tríceps Braquial'];
+      movementPattern = 'Empuje Horizontal';
+      jointStress = { level: 'Moderado', joints: ['Hombro', 'Codo'] };
+    } else if (/\b(?:espalda|dorsal|tiron|traccion|pull)\b/i.test(clean)) {
+      primaryMuscles = ['Dorsal / Espalda', 'Trapecio / Romboides'];
+      secondaryMuscles = ['Bíceps y Antebrazo', 'Deltoides Posterior'];
+      movementPattern = 'Tracción Horizontal';
+      jointStress = { level: 'Bajo', joints: ['Hombro', 'Codo'] };
+    } else if (/\b(?:hombro|deltoides)\b/i.test(clean)) {
+      primaryMuscles = ['Deltoides (Anterior / Lateral)'];
+      secondaryMuscles = ['Deltoides Posterior', 'Trapecio / Romboides'];
+      movementPattern = 'Empuje Vertical';
+      jointStress = { level: 'Bajo', joints: ['Hombro'] };
+    } else if (/\b(?:brazo)\b/i.test(clean)) {
+      primaryMuscles = ['Bíceps y Antebrazo', 'Tríceps Braquial'];
+      secondaryMuscles = ['Deltoides (Anterior / Lateral)'];
+      movementPattern = 'Aislamiento';
+      jointStress = { level: 'Bajo', joints: ['Codo', 'Muñeca'] };
+    } else if (/\b(?:pierna|tren\s*inferior|lower)\b/i.test(clean)) {
+      primaryMuscles = ['Cuádriceps', 'Glúteos y Cadera'];
+      secondaryMuscles = ['Isquiosurales', 'Pantorrillas (Gemelos / Sóleo)'];
+      movementPattern = 'Dominante de Rodilla';
+      jointStress = { level: 'Moderado', joints: ['Rodilla', 'Cadera'] };
+    } else if (mode === 'calisthenics') {
+      primaryMuscles = ['Dorsal / Espalda', 'Core y Erectores Espinales'];
+      secondaryMuscles = ['Deltoides (Anterior / Lateral)', 'Tríceps Braquial', 'Bíceps y Antebrazo'];
+      movementPattern = 'Isométrico de Palanca';
+      jointStress = { level: 'Moderado', joints: ['Hombro', 'Codo', 'Muñeca'] };
+    } else {
+      primaryMuscles = ['Pectoral', 'Dorsal / Espalda', 'Cuádriceps'];
+      secondaryMuscles = ['Deltoides (Anterior / Lateral)', 'Core y Erectores Espinales'];
+      movementPattern = 'Híbrido / Funcional';
+      jointStress = { level: 'Moderado', joints: ['Hombro', 'Cadera', 'Rodilla'] };
+    }
   }
 
-  return {
+  const baseSynthesized: ExerciseDeepProfile = {
     primaryMuscles,
     secondaryMuscles,
     stabilizerMuscles,
@@ -767,6 +1169,8 @@ export function synthesizeExerciseDeepProfile(
     fatigueCoefficient,
     isAiResearched: false,
   };
+
+  return applyGripAndVariantModifiers(baseSynthesized, rawName, mode, effectiveGrip);
 }
 
 // Anatomical keyword inference for novel custom exercises

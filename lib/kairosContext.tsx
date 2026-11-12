@@ -125,6 +125,7 @@ interface KairosContextValue {
   sessionElapsedSeconds: number;
   resetSessionClock: () => void;
   updateWorkoutTitle: (title: string) => void;
+  updateWorkoutCustomDate: (dateYmd?: string) => void;
   updateWorkoutNotes: (notes: string) => void;
   addBlockToWorkout: (mode: TrainingMode, cardioDiscipline?: CardioDiscipline) => void;
   removeBlockFromWorkout: (blockId: string) => void;
@@ -965,6 +966,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       const nextWorkout: ActiveWorkoutDraft = {
         title: effectiveDayPlan.focusTitle || '',
         titlePlaceholder: `Ej: ${effectiveDayPlan.focusTitle}`,
+        customDateYmd: activeWorkout.customDateYmd,
         startedAtMs: Date.now(),
         notes: '',
         blocks,
@@ -974,7 +976,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       void pushStateToServer({ activeWorkout: nextWorkout });
       setActiveTab('workout');
     },
-    [catalog, profile, pushStateToServer, sessions]
+    [activeWorkout.customDateYmd, catalog, profile, pushStateToServer, sessions]
   );
 
   const addRoutineExerciseToWorkout = useCallback(
@@ -1069,6 +1071,11 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       setTitleRequiredError(false);
     }
     setActiveWorkout((prev) => ({ ...prev, title }));
+  }, []);
+
+  const updateWorkoutCustomDate = useCallback((dateYmd?: string) => {
+    const clean = dateYmd && /^\d{4}-\d{2}-\d{2}$/.test(dateYmd.trim()) ? dateYmd.trim() : undefined;
+    setActiveWorkout((prev) => ({ ...prev, customDateYmd: clean }));
   }, []);
 
   const updateWorkoutNotes = useCallback((notes: string) => {
@@ -1432,10 +1439,27 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       })),
     }));
 
+    let resolvedDateIso = new Date(now).toISOString();
+    if (activeWorkout.customDateYmd && /^\d{4}-\d{2}-\d{2}$/.test(activeWorkout.customDateYmd)) {
+      const [yStr, mStr, dStr] = activeWorkout.customDateYmd.split('-');
+      const customDateObj = new Date(
+        Number(yStr),
+        Number(mStr) - 1,
+        Number(dStr),
+        12,
+        0,
+        0,
+        0
+      );
+      if (!Number.isNaN(customDateObj.getTime())) {
+        resolvedDateIso = customDateObj.toISOString();
+      }
+    }
+
     const completedSession: WorkoutSession = {
       id: uid('sess'),
       title: cleanTitle,
-      dateIso: new Date(now).toISOString(),
+      dateIso: resolvedDateIso,
       startedAtMs: activeWorkout.startedAtMs,
       durationSeconds: durationSec,
       notes: activeWorkout.notes.trim() || undefined,
@@ -1616,6 +1640,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       sessionElapsedSeconds,
       resetSessionClock,
       updateWorkoutTitle,
+      updateWorkoutCustomDate,
       updateWorkoutNotes,
       addBlockToWorkout,
       removeBlockFromWorkout,
@@ -1670,6 +1695,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       sessionElapsedSeconds,
       resetSessionClock,
       updateWorkoutTitle,
+      updateWorkoutCustomDate,
       updateWorkoutNotes,
       addBlockToWorkout,
       removeBlockFromWorkout,

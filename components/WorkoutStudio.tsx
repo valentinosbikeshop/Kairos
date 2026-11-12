@@ -49,6 +49,7 @@ export function WorkoutStudio() {
     activeWorkout,
     titleRequiredError,
     updateWorkoutTitle,
+    updateWorkoutCustomDate,
     addBlockToWorkout,
     removeBlockFromWorkout,
     updateBlockTitle,
@@ -194,6 +195,14 @@ export function WorkoutStudio() {
   // Weekly consistency strip (L M X J V S D) & live session progress
   const weeklyActivity = useMemo(() => {
     const now = new Date();
+    const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      now.getDate()
+    ).padStart(2, '0')}`;
+    const yesterdayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const yesterdayYmd = `${yesterdayDate.getFullYear()}-${String(
+      yesterdayDate.getMonth() + 1
+    ).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
+
     const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon...
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
@@ -201,7 +210,15 @@ export function WorkoutStudio() {
     const trainedDaysSet = new Set<string>();
     for (const s of sessions) {
       if (s.dateIso) {
-        trainedDaysSet.add(s.dateIso.slice(0, 10));
+        const sd = new Date(s.dateIso);
+        if (!Number.isNaN(sd.getTime())) {
+          const ymd = `${sd.getFullYear()}-${String(sd.getMonth() + 1).padStart(2, '0')}-${String(
+            sd.getDate()
+          ).padStart(2, '0')}`;
+          trainedDaysSet.add(ymd);
+        } else {
+          trainedDaysSet.add(s.dateIso.slice(0, 10));
+        }
       }
     }
 
@@ -211,13 +228,14 @@ export function WorkoutStudio() {
       const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
         d.getDate()
       ).padStart(2, '0')}`;
-      const isToday = d.toDateString() === now.toDateString();
+      const isToday = iso === todayYmd;
+      const isFuture = iso > todayYmd;
       const trained = trainedDaysSet.has(iso);
-      return { lbl, iso, isToday, trained };
+      return { lbl, iso, isToday, isFuture, trained };
     });
 
     const weekCount = days.filter((d) => d.trained).length;
-    return { days, weekCount };
+    return { days, weekCount, todayYmd, yesterdayYmd };
   }, [sessions]);
 
   const liveWorkoutStats = useMemo(() => {
@@ -386,22 +404,48 @@ export function WorkoutStudio() {
                 </span>
               )}
 
-              {/* Weekly Consistency Dots (L M X J V S D) */}
-              <div className="flex items-center gap-1" title="Constancia semanal (Lunes a Domingo)">
-                {weeklyActivity.days.map((d) => (
-                  <div
-                    key={d.iso}
-                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-mono font-bold transition-all ${
-                      d.trained
-                        ? 'bg-emerald-500/25 border border-emerald-400/70 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
-                        : d.isToday
-                          ? 'border border-gothic/80 bg-gothic/15 text-gothic'
-                          : 'border border-stoneborder bg-background/60 text-brand-subtle'
-                    }`}
-                  >
-                    {d.trained ? '✓' : d.lbl}
-                  </div>
-                ))}
+              {/* Weekly Consistency Dots (L M X J V S D) — Tappable to select past day */}
+              <div
+                className="flex items-center gap-1"
+                title="Toca un día pasado si olvidaste registrar tu entrenamiento"
+              >
+                {weeklyActivity.days.map((d) => {
+                  const isSelectedPastDay = activeWorkout.customDateYmd === d.iso;
+                  return (
+                    <button
+                      key={d.iso}
+                      type="button"
+                      disabled={d.isFuture}
+                      onClick={() => {
+                        if (d.isToday) {
+                          updateWorkoutCustomDate(undefined);
+                        } else if (!d.isFuture) {
+                          updateWorkoutCustomDate(d.iso);
+                        }
+                      }}
+                      title={
+                        d.isToday
+                          ? `Hoy (${d.iso})`
+                          : d.isFuture
+                            ? `${d.lbl} (${d.iso})`
+                            : `Registrar entrenamiento en ${d.lbl} (${d.iso})`
+                      }
+                      className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-mono font-bold transition-all ${
+                        isSelectedPastDay
+                          ? 'bg-amber-500/30 border border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
+                          : d.trained
+                            ? 'bg-emerald-500/25 border border-emerald-400/70 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                            : d.isToday
+                              ? 'border border-gothic/80 bg-gothic/15 text-gothic'
+                              : d.isFuture
+                                ? 'border border-stoneborder/40 bg-background/30 text-brand-subtle/40 cursor-default'
+                                : 'border border-stoneborder bg-background/60 text-brand-subtle hover:border-gothic/50'
+                      }`}
+                    >
+                      {d.trained ? '✓' : d.lbl}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -682,11 +726,82 @@ export function WorkoutStudio() {
           )}
         </section>
 
-        {/* ================= SESSION TITLE (GREY EXAMPLE PLACEHOLDER) ================= */}
-        <div className="space-y-1.5">
+        {/* ================= SESSION TITLE & RETROACTIVE DATE SELECTOR ================= */}
+        <div className="space-y-2">
+          {/* Retroactive / Forgotten Workout Date Selector */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stoneborder bg-surface/80 px-3 py-2">
+            <div className="flex items-center gap-1.5 text-[11px]">
+              <CalendarCheck className="h-3.5 w-3.5 text-gothic shrink-0" />
+              <span className="text-brand-muted">Fecha de registro:</span>
+              <span
+                className={`font-semibold ${
+                  activeWorkout.customDateYmd &&
+                  activeWorkout.customDateYmd !== weeklyActivity.todayYmd
+                    ? 'text-amber-300'
+                    : 'text-brand'
+                }`}
+              >
+                {!activeWorkout.customDateYmd ||
+                activeWorkout.customDateYmd === weeklyActivity.todayYmd
+                  ? 'Hoy'
+                  : activeWorkout.customDateYmd === weeklyActivity.yesterdayYmd
+                    ? `Ayer (${activeWorkout.customDateYmd})`
+                    : activeWorkout.customDateYmd}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => updateWorkoutCustomDate(undefined)}
+                className={`rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors ${
+                  !activeWorkout.customDateYmd ||
+                  activeWorkout.customDateYmd === weeklyActivity.todayYmd
+                    ? 'border-gothic/60 bg-gothic/15 text-gothic font-semibold'
+                    : 'border-stoneborder bg-background text-brand-muted hover:text-brand'
+                }`}
+              >
+                Hoy
+              </button>
+              <button
+                type="button"
+                onClick={() => updateWorkoutCustomDate(weeklyActivity.yesterdayYmd)}
+                className={`rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors ${
+                  activeWorkout.customDateYmd === weeklyActivity.yesterdayYmd
+                    ? 'border-amber-400/70 bg-amber-500/20 text-amber-200 font-semibold'
+                    : 'border-stoneborder bg-background text-brand-muted hover:text-brand'
+                }`}
+              >
+                Ayer
+              </button>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="date"
+                  max={weeklyActivity.todayYmd}
+                  value={activeWorkout.customDateYmd || weeklyActivity.todayYmd}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val || val === weeklyActivity.todayYmd) {
+                      updateWorkoutCustomDate(undefined);
+                    } else {
+                      updateWorkoutCustomDate(val);
+                    }
+                  }}
+                  className="sr-only"
+                />
+                <span className="rounded-lg border border-stoneborder bg-background px-2 py-1 text-[10px] text-brand-muted hover:border-gothic/50 hover:text-brand">
+                  Otro día…
+                </span>
+              </label>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
             <label htmlFor="workout-title-input" className="text-xs text-brand-muted">
-              Título de la sesión de hoy
+              {activeWorkout.customDateYmd &&
+              activeWorkout.customDateYmd !== weeklyActivity.todayYmd
+                ? `Título de la sesión (${activeWorkout.customDateYmd})`
+                : 'Título de la sesión de hoy'}
             </label>
             {activeWorkout.blocks.length > 0 && (
               <button

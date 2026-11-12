@@ -18,7 +18,9 @@ import { parseAgenticUserCommand, generateScientificAiResponse } from '../lib/ai
 import {
   detectOutOfContextExerciseWords,
   resolveExerciseIntelligently,
+  synthesizeExerciseDeepProfile,
 } from '../lib/exerciseClassifierEngine';
+import { computeMuscleFatigueReports } from '../lib/analyticsEngine';
 import { WorkoutSession } from '../types/kairos';
 
 async function runProductionSuite() {
@@ -294,6 +296,100 @@ async function runProductionSuite() {
     throw new Error('FALLO: Guardrail de enfoque temático no redirigió consulta fuera de dominio.');
   }
   console.log('✅ 12. Coherencia integral del Motor de IA verificada (Descansos, Recomposición sin falsos positivos, Sustitutos, Sueño/HRV y Guardrail de dominio).');
+
+  // Test 13: Biomecánica de Agarres/Variantes (Supino, Prono, Cuerda, Neutro) y Motor Universal de Fatiga en Ejercicios Personalizados
+  const jalonProno = synthesizeExerciseDeepProfile('Jalón al Pecho', 'hypertrophy', 'prono');
+  const jalonSupino = synthesizeExerciseDeepProfile('Jalón al Pecho', 'hypertrophy', 'supino');
+  if (
+    !jalonSupino.variantAnalysisNote ||
+    !jalonSupino.primaryMuscles.some((m) => m.includes('Bíceps')) ||
+    jalonSupino.gripVariant !== 'supino'
+  ) {
+    throw new Error('FALLO: Agarre supino en Jalón al Pecho no recalculó reclutamiento de Bíceps ni nota de variante.');
+  }
+
+  const curlProno = synthesizeExerciseDeepProfile('Curl con Barra', 'hypertrophy', 'prono');
+  if (!curlProno.primaryMuscles.some((m) => m.includes('Braquiorradial') || m.includes('Antebrazo'))) {
+    throw new Error('FALLO: Agarre prono en Curl no desvió énfasis hacia Braquiorradial/Antebrazo.');
+  }
+
+  const tricepsCuerda = synthesizeExerciseDeepProfile('Extensión de Tríceps en Polea', 'hypertrophy', 'cuerda');
+  if (!tricepsCuerda.variantAnalysisNote || !tricepsCuerda.variantAnalysisNote.toLowerCase().includes('cuerda')) {
+    throw new Error('FALLO: Variante con cuerda en Tríceps no generó análisis biomecánico.');
+  }
+
+  const customUnlisted = synthesizeExerciseDeepProfile('Remo Vikingo Unilateral en Máquina', 'hypertrophy', 'neutro');
+  if (customUnlisted.primaryMuscles.length === 0 || customUnlisted.primaryMuscles[0] === 'Personalizado') {
+    throw new Error('FALLO: Ejercicio personalizado fuera de catálogo no fue clasificado anatómicamente.');
+  }
+
+  const fatigueReports = computeMuscleFatigueReports([
+    {
+      id: 'sess_variant_test',
+      title: 'Espalda + Cardio Mixto',
+      dateIso: new Date().toISOString(),
+      startedAtMs: Date.now() - 3600_000,
+      durationSeconds: 3600,
+      blocks: [
+        {
+          id: 'blk_v1',
+          mode: 'hypertrophy',
+          title: 'Hipertrofia',
+          exercises: [
+            {
+              id: 'ex_v1',
+              catalogId: 'custom_jalon_supino',
+              name: 'Jalón en Polea',
+              muscleGroup: 'Personalizado',
+              mode: 'hypertrophy',
+              gripVariant: 'supino',
+              defaultRestSeconds: 120,
+              hypertrophySets: [
+                { id: 's1', setType: 'Efectiva', weightKg: 70, reps: 10, rir: '1', restSeconds: 120, completed: true },
+                { id: 's2', setType: 'Efectiva', weightKg: 70, reps: 10, rir: '1', restSeconds: 120, completed: true },
+                { id: 's3', setType: 'Efectiva', weightKg: 70, reps: 10, rir: '0', restSeconds: 120, completed: true },
+              ],
+            },
+          ],
+        },
+        {
+          id: 'blk_v2',
+          mode: 'cardio',
+          cardioDiscipline: 'running',
+          title: 'Running',
+          exercises: [
+            {
+              id: 'ex_v2',
+              catalogId: 'custom_run',
+              name: 'Series de Velocidad en Pista',
+              muscleGroup: 'Cardio',
+              mode: 'cardio',
+              cardioDiscipline: 'running',
+              defaultRestSeconds: 90,
+              runningSets: [
+                {
+                  id: 'r1',
+                  runType: 'Series de Velocidad / Fartlek',
+                  distanceMeters: 3000,
+                  durationSeconds: 780,
+                  inclinePercent: 1,
+                  restSeconds: 90,
+                  completed: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  const latsReport = fatigueReports.find((r) => r.muscleGroup.includes('Dorsal'));
+  const bicepsReport = fatigueReports.find((r) => r.muscleGroup.includes('Bíceps'));
+  if (!latsReport || !bicepsReport || bicepsReport.effectiveSets7d <= 0) {
+    throw new Error('FALLO: computeMuscleFatigueReports no acreditó fatiga multi-articular del agarre supino.');
+  }
+  console.log(`✅ 13. Motor de Variantes de Agarre (${jalonProno.gripVariant} vs ${jalonSupino.gripVariant}) y Fatiga Multi-Disciplina verificados.`);
 
   console.log('--- TODOS LOS TESTS DE PRODUCCIÓN Y PERSISTENCIA PASARON CON ÉXITO (100%) ---');
 }

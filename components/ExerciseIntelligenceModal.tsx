@@ -237,6 +237,16 @@ export function ExerciseDeepProfileModal({
           )}
 
           {/* 1. Mapa Anatómico de Reclutamiento Muscular */}
+          {profile.variantAnalysisNote && (
+            <div className="rounded-xl border border-gothic/40 bg-gothic/15 p-3.5 text-xs text-brand">
+              <div className="mb-1 flex items-center gap-1.5 font-bold uppercase tracking-wider text-gothic text-[10px]">
+                <Sparkles className="h-3.5 w-3.5" />
+                Análisis de Variante / Agarre Activo
+              </div>
+              <p className="leading-relaxed text-brand/95">{profile.variantAnalysisNote}</p>
+            </div>
+          )}
+
           <div className="space-y-3 rounded-xl border border-stoneborder/80 bg-[#0E0D10] p-4">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand">
               <Target className="h-4 w-4 text-gothic" />

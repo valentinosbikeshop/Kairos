@@ -10,6 +10,7 @@ import {
 } from '@/types/kairos';
 import { BUILTIN_EXERCISES, normalizeSearchText } from '@/lib/exerciseDatabase';
 import {
+  applyGripAndVariantModifiers,
   cleanAllRoutineExercises,
   resolveExerciseIntelligently,
 } from '@/lib/exerciseClassifierEngine';
@@ -1263,6 +1264,39 @@ export async function generateScientificAiResponse(
     };
   }
 
+  // 13.5 BIOMECÁNICA DE VARIANTES DE AGARRE E IMPLEMENTOS (SUPINO, PRONO, NEUTRO, CUERDA, BARRA Z, ANCHO, CERRADO, UNILATERAL)
+  if (
+    /\b(?:que\s+cambia|diferencia\s+entre|tipo\s+de\s+agarre|agarre\s+supino|agarre\s+prono|agarre\s+neutro|con\s+cuerda|barra\s+z|agarre\s+ancho|agarre\s+cerrado)\b/i.test(
+      q
+    ) &&
+    q.split(/\s+/).length > 4
+  ) {
+    const modProf = applyGripAndVariantModifiers(
+      resolveExerciseIntelligently(query).deepProfile,
+      query,
+      'hypertrophy'
+    );
+    const content =
+      `### Biomecánica de Agarres y Variantes en KAIROS\n\n` +
+      (modProf.variantAnalysisNote
+        ? `**Análisis de tu variante consultada:** ${modProf.variantAnalysisNote}\n\n`
+        : '') +
+      `Cada vez que seleccionas el **Tipo de Agarre / Variante** en la tarjeta de un ejercicio, el motor de fatiga y recuperación de KAIROS recalcula automáticamente los músculos reclutados:\n\n` +
+      `- **Agarre Supino (Palmas arriba):** En tracciones (Jalón/Remo/Dominadas) alinea el codo en plano sagital maximizando el **Dorsal Inferior** y elevando un **~25% el trabajo directo del Bíceps Braquial**. En empujes enfatiza el **Pectoral Clavicular**.\n` +
+      `- **Agarre Prono (Palmas abajo):** En tracciones abduce el húmero enfocando **Redondo Mayor, Espalda Alta y Deltoides Posterior**, y en el codo transfiere la carga del bíceps hacia el **Braquiorradial y Braquial Anterior**.\n` +
+      `- **Agarre Neutro / Martillo:** Alinea radio y cúbito en su posición más fuerte y segura; maximiza **Dorsal Ancho + Braquiorradial** en jalones/remos y reduce el estrés articular en hombro, codo y muñeca (+SFR).\n` +
+      `- **Con Cuerda (Polea):** Permite pronar o supinar libremente al final del recorrido (ej. extensión de tríceps o face pull), logrando **acortamiento máximo de la Cabeza Lateral y Larga del Tríceps** con estrés articular mínimo (` +
+      `SFR 10/10).\n` +
+      `- **Barra Z (Angulada ~25°):** Libera la torsión radiocubital de la muñeca y epitróclea del codo, repartiendo el estímulo entre **Bíceps Braquial y Braquial Anterior**.\n` +
+      `- **Unilateral (1 Brazo / 1 Pierna):** Elimina el déficit bilateral, reduce la fatiga sistémica del SNC (-1 pt) y activa los **Oblicuos y Core Antirrotacional**.`;
+
+    return {
+      content,
+      suggestedActions: extractActionSuggestionsFromText(content, query, context),
+      confidence: 98,
+    };
+  }
+
   // 14. CONSULTA ESPECÍFICA DE EJERCICIOS Y BIOMECÁNICA PROFUNDA
   // Only match when query isn't a long unrelated question
   const candidateResolved = resolveExerciseIntelligently(query);
@@ -1271,11 +1305,18 @@ export async function generateScientificAiResponse(
     q.split(/\s+/).length <= 10
   ) {
     const exName = candidateResolved.canonicalName;
-    const dp = candidateResolved.deepProfile;
+    const dp = applyGripAndVariantModifiers(
+      candidateResolved.deepProfile,
+      query,
+      candidateResolved.mode
+    );
     const rest = candidateResolved.defaultRestSeconds;
 
     const content =
       `### Dossier Biomecánico y Fisiológico: **${exName}**\n\n` +
+      (dp.variantAnalysisNote
+        ? `> **Variante detectada:** ${dp.variantAnalysisNote}\n\n`
+        : '') +
       `- **Músculos Principales (Agonistas · 100% Estímulo):** ${dp.primaryMuscles.join(', ')}\n` +
       `- **Músculos Necesarios (Sinergistas · ~50% Carga Asociada):** ${dp.secondaryMuscles.join(', ')}\n` +
       `- **Músculos Estabilizadores:** ${dp.stabilizerMuscles.join(', ')}\n` +

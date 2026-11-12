@@ -454,41 +454,48 @@ class KairosAudioEngine {
   }
 
   /**
-   * Pulso rítmico de cadencia por segundo durante sostenimientos isométricos (Planche, Front Lever, L-Sit),
-   * permitiendo al atleta contar cada segundo sin mirar la pantalla.
+   * Pulso rítmico suave de cadencia por segundo durante sostenimientos isométricos (Planche, Front Lever, L-Sit),
+   * a frecuencia cálida constante (380 Hz) sin fatiga auditiva.
    */
   public playIsometricSecondPulse(): void {
     if (this.settings.gainPercent <= 0) return;
     this.withRunningContext((ctx, master, now) => {
       const osc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
       const env = ctx.createGain();
-      osc.type = this.settings.profile === 'tactical' ? 'triangle' : 'sine';
-      osc.frequency.setValueAtTime(660, now);
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(380, now);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(800, now);
 
       env.gain.setValueAtTime(0.0001, now);
-      env.gain.linearRampToValueAtTime(0.38, now + 0.01);
-      env.gain.setValueAtTime(0.34, now + 0.09);
-      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.19);
+      env.gain.linearRampToValueAtTime(0.32, now + 0.012);
+      env.gain.setValueAtTime(0.28, now + 0.075);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
 
-      osc.connect(env);
+      osc.connect(filter);
+      filter.connect(env);
       env.connect(master);
       osc.start(now);
-      osc.stop(now + 0.2);
+      osc.stop(now + 0.15);
     });
   }
 
   /**
-   * Plays elongated countdown beep for 5, 4, 3, 2, 1 seconds remaining.
+   * Reproduce los beeps de cuenta regresiva (5, 4, 3, 2, 1) a TONO CONSTANTE (nunca sube de agudeza).
+   * Los segundos 5, 4, 3 y 2 son pulsos cortos y definidos (~190ms), mientras que el último beep (1)
+   * antes del cambio es notablemente más alargado (~640ms) manteniendo exactamente el mismo tono cálido.
    */
   public playCountdownPip(secondRemaining: 5 | 4 | 3 | 2 | 1 = 1): void {
-    this.vibrate(secondRemaining <= 3 ? 55 : 35);
+    this.vibrate(secondRemaining === 1 ? [80, 40, 80] : 40);
     if (this.settings.gainPercent <= 0) return;
 
-    this.pulseTransientAudioSession(420);
+    this.pulseTransientAudioSession(secondRemaining === 1 ? 700 : 260);
 
     this.unlock();
-    // En navegadores modernos sintetizamos mediante Web Audio con sesión 'ambient'.
-    // Evitamos llamar a new Audio().play() para no interrumpir Apple Music o Spotify.
+    // Síntesis Web Audio con sesión 'ambient' para nunca pausar Apple Music ni Spotify.
     this.withRunningContext((c, _master, now) =>
       this.synthCountdownPip(c, now, secondRemaining)
     );
@@ -501,114 +508,128 @@ class KairosAudioEngine {
   ): void {
     if (!this.masterGain) return;
     const profile = this.settings.profile;
+    const isLastBeepBeforeChange = secondRemaining === 1;
+
+    // Duración: 5, 4, 3, 2 son cortos (190ms); el último beep (1) antes del cambio es alargado (640ms) al MISMO tono
+    const totalDur = isLastBeepBeforeChange ? 0.64 : 0.19;
+    const sustainEnd = isLastBeepBeforeChange ? 0.52 : 0.12;
 
     if (profile === 'minimal') {
-      // Elongated 360ms resonant harmonic beep with progressive pitch (5 -> 4 -> 3 -> 2 -> 1)
-      const baseFreq =
-        secondRemaining === 1
-          ? 1046.5 // C6
-          : secondRemaining === 2
-            ? 987.77 // B5
-            : secondRemaining === 3
-              ? 880 // A5
-              : 783.99; // G5
+      // Perfil Minimal: Tono cálido de estudio constante a 440 Hz (La4) + sub-octava suave a 220 Hz, sin subir agudeza
+      const constFreq = 440;
       const osc = ctx.createOscillator();
       const subOsc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
       const env = ctx.createGain();
       const subGain = ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.setValueAtTime(constFreq, now);
 
-      subOsc.type = 'triangle';
-      subOsc.frequency.setValueAtTime(baseFreq * 1.5, now);
-      subGain.gain.setValueAtTime(0.22, now);
+      subOsc.type = 'sine';
+      subOsc.frequency.setValueAtTime(constFreq * 0.5, now);
+      subGain.gain.setValueAtTime(0.24, now);
 
-      // Sustained plateau envelope so the beep is noticeably elongated and clear (360ms)
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(950, now);
+
       env.gain.setValueAtTime(0.0001, now);
-      env.gain.linearRampToValueAtTime(0.75, now + 0.014);
-      env.gain.setValueAtTime(0.68, now + 0.21);
-      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
+      env.gain.linearRampToValueAtTime(0.76, now + 0.015);
+      env.gain.setValueAtTime(0.7, now + sustainEnd);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + totalDur);
 
-      osc.connect(env);
+      osc.connect(filter);
       subOsc.connect(subGain);
-      subGain.connect(env);
+      subGain.connect(filter);
+      filter.connect(env);
       env.connect(this.masterGain);
 
       osc.start(now);
       subOsc.start(now);
-      osc.stop(now + 0.37);
-      subOsc.stop(now + 0.37);
+      osc.stop(now + totalDur + 0.02);
+      subOsc.stop(now + totalDur + 0.02);
     } else if (profile === 'boxing') {
-      // Elongated 350ms metallic/wood ring clapper warning strike
-      const carrier = ctx.createOscillator();
-      const mod = ctx.createOscillator();
-      const modGain = ctx.createGain();
+      // Perfil Boxeo: Tono grave y cálido constante a 360 Hz (sin estridencia metálica ni subida de tono)
+      const constFreq = 360;
+      const osc = ctx.createOscillator();
+      const bodyOsc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const bodyGain = ctx.createGain();
       const env = ctx.createGain();
 
-      carrier.type = 'triangle';
-      const freq = secondRemaining === 1 ? 920 : secondRemaining === 2 ? 840 : 760;
-      carrier.frequency.setValueAtTime(freq, now);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(constFreq, now);
 
-      mod.type = 'sine';
-      mod.frequency.setValueAtTime(1240, now);
-      modGain.gain.setValueAtTime(310, now);
-      modGain.gain.exponentialRampToValueAtTime(12, now + 0.26);
+      bodyOsc.type = 'sine';
+      bodyOsc.frequency.setValueAtTime(constFreq * 1.5, now);
+      bodyGain.gain.setValueAtTime(0.18, now);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(880, now);
 
       env.gain.setValueAtTime(0.0001, now);
-      env.gain.linearRampToValueAtTime(0.8, now + 0.008);
-      env.gain.setValueAtTime(0.66, now + 0.18);
-      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+      env.gain.linearRampToValueAtTime(0.82, now + 0.01);
+      env.gain.setValueAtTime(0.74, now + sustainEnd);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + totalDur);
 
-      mod.connect(modGain);
-      modGain.connect(carrier.frequency);
-      carrier.connect(env);
+      osc.connect(filter);
+      bodyOsc.connect(bodyGain);
+      bodyGain.connect(filter);
+      filter.connect(env);
       env.connect(this.masterGain);
 
-      mod.start(now);
-      carrier.start(now);
-      mod.stop(now + 0.36);
-      carrier.stop(now + 0.36);
+      osc.start(now);
+      bodyOsc.start(now);
+      osc.stop(now + totalDur + 0.02);
+      bodyOsc.stop(now + totalDur + 0.02);
     } else {
-      // Tactical: Elongated 360ms high-penetration double-sustained pulse (cuts over heavy sub-bass)
-      const baseFreq = secondRemaining === 1 ? 1420 : secondRemaining === 2 ? 1300 : 1200;
-      const pulses = [
-        { offset: 0, dur: 0.14 },
-        { offset: 0.16, dur: 0.2 },
-      ];
-      pulses.forEach(({ offset, dur }) => {
-        if (!this.masterGain) return;
-        const osc = ctx.createOscillator();
-        const env = ctx.createGain();
-        const t = now + offset;
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(baseFreq, t);
+      // Perfil Táctico (Rogue / Concept2 Chrono): Tono sólido y cálido constante a 500 Hz
+      const constFreq = 500;
+      const osc = ctx.createOscillator();
+      const subOsc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const subGain = ctx.createGain();
+      const env = ctx.createGain();
 
-        env.gain.setValueAtTime(0.0001, t);
-        env.gain.linearRampToValueAtTime(0.82, t + 0.008);
-        env.gain.setValueAtTime(0.74, t + dur * 0.65);
-        env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(constFreq, now);
 
-        osc.connect(env);
-        env.connect(this.masterGain);
-        osc.start(t);
-        osc.stop(t + dur + 0.01);
-      });
+      subOsc.type = 'sine';
+      subOsc.frequency.setValueAtTime(constFreq * 0.5, now);
+      subGain.gain.setValueAtTime(0.3, now);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1100, now);
+
+      env.gain.setValueAtTime(0.0001, now);
+      env.gain.linearRampToValueAtTime(0.85, now + 0.012);
+      env.gain.setValueAtTime(0.78, now + sustainEnd);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + totalDur);
+
+      osc.connect(filter);
+      subOsc.connect(subGain);
+      subGain.connect(filter);
+      filter.connect(env);
+      env.connect(this.masterGain);
+
+      osc.start(now);
+      subOsc.start(now);
+      osc.stop(now + totalDur + 0.02);
+      subOsc.stop(now + totalDur + 0.02);
     }
   }
 
   /**
-   * Plays elongated completion / phase transition signal at 00:00 (1.25s - 1.55s).
-   * cueType 'work' = start set / work phase (energetic ascending), 'rest' = enter rest phase, 'finish' = timer complete.
+   * Señal cálida, profunda y alargada (~0.95s - 1.15s) al llegar a 00:00 o cambiar de fase.
+   * Diseñada con filtros paso-bajo para sonar limpia, profesional y nunca aguda ni estridente.
    */
   public playCompletionCue(cueType: 'finish' | 'work' | 'rest' = 'finish'): void {
-    this.vibrate(cueType === 'rest' ? [90, 50, 120] : [140, 60, 160, 60, 260]);
+    this.vibrate(cueType === 'rest' ? [100, 50, 120] : [160, 60, 240]);
     if (this.settings.gainPercent <= 0) return;
 
-    this.pulseTransientAudioSession(1500);
+    this.pulseTransientAudioSession(1150);
 
     this.unlock();
-    // Síntesis Web Audio directa con categoría 'ambient' para mezcla limpia sobre la música
     this.withRunningContext((c, _master, now) => this.synthCompletionCue(c, now, cueType));
   }
 
@@ -621,143 +642,95 @@ class KairosAudioEngine {
     const profile = this.settings.profile;
 
     if (profile === 'minimal') {
-      if (cueType === 'rest') {
-        // Elongated 1.2s descending two-step chord signaling "Entrar en Descanso"
-        const steps = [
-          { freq: 1174.66, harm: 1760, delay: 0, sustain: 0.22, dur: 0.36, amp: 0.72 },
-          { freq: 783.99, harm: 1174.66, delay: 0.34, sustain: 0.55, dur: 0.88, amp: 0.75 },
-        ];
-        steps.forEach(({ freq, harm, delay, sustain, dur, amp }) => {
-          if (!this.masterGain) return;
-          const t = now + delay;
-          const osc = ctx.createOscillator();
-          const harmOsc = ctx.createOscillator();
-          const harmGain = ctx.createGain();
-          const env = ctx.createGain();
+      // Acorde cálido de estudio sostenido (0.95s) en registro medio-grave relajante y redondo
+      const rootFreq = cueType === 'rest' ? 329.63 : 440; // E4 para descanso, A4 para trabajo/fin
+      const fifthFreq = cueType === 'rest' ? 440 : 554.37; // Quinta/Tercera cálida sin agudos
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1000, now);
+      filter.connect(this.masterGain);
 
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, t);
-          harmOsc.type = 'triangle';
-          harmOsc.frequency.setValueAtTime(harm, t);
-          harmGain.gain.setValueAtTime(0.2, t);
+      const voices = [
+        { freq: rootFreq * 0.5, type: 'sine' as OscillatorType, amp: 0.35 },
+        { freq: rootFreq, type: 'sine' as OscillatorType, amp: 0.72 },
+        { freq: fifthFreq, type: 'triangle' as OscillatorType, amp: 0.38 },
+      ];
 
-          env.gain.setValueAtTime(0.0001, t);
-          env.gain.linearRampToValueAtTime(amp, t + 0.015);
-          env.gain.setValueAtTime(amp * 0.85, t + sustain);
-          env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-
-          osc.connect(env);
-          harmOsc.connect(harmGain);
-          harmGain.connect(env);
-          env.connect(this.masterGain);
-          osc.start(t);
-          harmOsc.start(t);
-          osc.stop(t + dur + 0.02);
-          harmOsc.stop(t + dur + 0.02);
-        });
-      } else {
-        // Elongated 1.45s ascending stadium fanfare chord signaling "¡TRABAJO / TIEMPO CUMPLIDO!"
-        const voices = [
-          { freq: 880, type: 'sine' as OscillatorType, delay: 0, sustain: 0.16, dur: 0.28, amp: 0.72 },
-          { freq: 1108.73, type: 'sine' as OscillatorType, delay: 0.22, sustain: 0.16, dur: 0.28, amp: 0.75 },
-          { freq: 1318.51, type: 'sine' as OscillatorType, delay: 0.44, sustain: 0.65, dur: 1.02, amp: 0.8 },
-          { freq: 1760, type: 'triangle' as OscillatorType, delay: 0.44, sustain: 0.6, dur: 1.0, amp: 0.36 },
-        ];
-        voices.forEach(({ freq, type, delay, sustain, dur, amp }) => {
-          if (!this.masterGain) return;
-          const t = now + delay;
-          const osc = ctx.createOscillator();
-          const env = ctx.createGain();
-          osc.type = type;
-          osc.frequency.setValueAtTime(freq, t);
-
-          env.gain.setValueAtTime(0.0001, t);
-          env.gain.linearRampToValueAtTime(amp, t + 0.015);
-          env.gain.setValueAtTime(amp * 0.88, t + sustain);
-          env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-
-          osc.connect(env);
-          env.connect(this.masterGain);
-          osc.start(t);
-          osc.stop(t + dur + 0.02);
-        });
-      }
-    } else if (profile === 'boxing') {
-      // Authentic Championship FM Boxing Ring Bell with multi-strike & 1.5s metallic resonance
-      const strikes = cueType === 'rest' ? [0, 0.3] : [0, 0.25, 0.5];
-      strikes.forEach((strikeOffset, idx) => {
-        const t = now + strikeOffset;
-        const isLast = idx === strikes.length - 1;
-        const partials = [
-          { ratio: 1.0, modRatio: 1.43, modDepth: 540, amp: 0.72, decay: isLast ? 1.35 : 0.85 },
-          { ratio: 1.414, modRatio: 2.13, modDepth: 360, amp: 0.44, decay: isLast ? 1.05 : 0.65 },
-          { ratio: 2.38, modRatio: 3.17, modDepth: 240, amp: 0.3, decay: isLast ? 0.78 : 0.48 },
-        ];
-        const baseFreq = cueType === 'rest' ? 580 : 660;
-
-        partials.forEach((p) => {
-          if (!this.masterGain) return;
-          const carrier = ctx.createOscillator();
-          const mod = ctx.createOscillator();
-          const modGain = ctx.createGain();
-          const env = ctx.createGain();
-
-          carrier.type = 'sine';
-          carrier.frequency.setValueAtTime(baseFreq * p.ratio, t);
-
-          mod.type = 'sine';
-          mod.frequency.setValueAtTime(baseFreq * p.modRatio, t);
-          modGain.gain.setValueAtTime(p.modDepth, t);
-          modGain.gain.exponentialRampToValueAtTime(8, t + p.decay * 0.65);
-
-          env.gain.setValueAtTime(0.0001, t);
-          env.gain.linearRampToValueAtTime(p.amp, t + 0.004);
-          env.gain.setValueAtTime(p.amp * 0.78, t + 0.14);
-          env.gain.exponentialRampToValueAtTime(0.0001, t + p.decay);
-
-          mod.connect(modGain);
-          modGain.connect(carrier.frequency);
-          carrier.connect(env);
-          env.connect(this.masterGain);
-
-          mod.start(t);
-          carrier.start(t);
-          mod.stop(t + p.decay + 0.02);
-          carrier.stop(t + p.decay + 0.02);
-        });
-      });
-    } else {
-      // Tactical High-Penetration Elongated Burst (1.35s total duration)
-      const notes =
-        cueType === 'rest'
-          ? [
-              { freq: 1380, offset: 0, sustain: 0.18, dur: 0.28 },
-              { freq: 1120, offset: 0.31, sustain: 0.18, dur: 0.28 },
-              { freq: 920, offset: 0.62, sustain: 0.42, dur: 0.65 },
-            ]
-          : [
-              { freq: 1200, offset: 0, sustain: 0.14, dur: 0.22 },
-              { freq: 1480, offset: 0.24, sustain: 0.14, dur: 0.22 },
-              { freq: 1760, offset: 0.48, sustain: 0.62, dur: 0.92 },
-            ];
-
-      notes.forEach(({ freq, offset, sustain, dur }) => {
-        if (!this.masterGain) return;
-        const t = now + offset;
+      voices.forEach(({ freq, type, amp }) => {
         const osc = ctx.createOscillator();
         const env = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, t);
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
 
-        env.gain.setValueAtTime(0.0001, t);
-        env.gain.linearRampToValueAtTime(0.88, t + 0.008);
-        env.gain.setValueAtTime(0.8, t + sustain);
-        env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.linearRampToValueAtTime(amp, now + 0.02);
+        env.gain.setValueAtTime(amp * 0.85, now + 0.68);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + 0.96);
 
         osc.connect(env);
-        env.connect(this.masterGain);
-        osc.start(t);
-        osc.stop(t + dur + 0.01);
+        env.connect(filter);
+        osc.start(now);
+        osc.stop(now + 0.98);
+      });
+    } else if (profile === 'boxing') {
+      // Gong de bronce grave y profundo (392 Hz fundamental filtrada a 1150 Hz, 1.15s de resonancia cálida)
+      const baseFreq = cueType === 'rest' ? 330 : 392;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1150, now);
+      filter.connect(this.masterGain);
+
+      const partials = [
+        { ratio: 0.5, amp: 0.45, decay: 1.15, type: 'sine' as OscillatorType },
+        { ratio: 1.0, amp: 0.78, decay: 1.1, type: 'triangle' as OscillatorType },
+        { ratio: 1.498, amp: 0.36, decay: 0.85, type: 'sine' as OscillatorType },
+      ];
+
+      partials.forEach((p) => {
+        const osc = ctx.createOscillator();
+        const env = ctx.createGain();
+        osc.type = p.type;
+        osc.frequency.setValueAtTime(baseFreq * p.ratio, now);
+
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.linearRampToValueAtTime(p.amp, now + 0.01);
+        env.gain.setValueAtTime(p.amp * 0.76, now + 0.55);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
+
+        osc.connect(env);
+        env.connect(filter);
+        osc.start(now);
+        osc.stop(now + p.decay + 0.02);
+      });
+    } else {
+      // Cronógrafo Deportivo Rogue / Concept2: Bocina de gimnasio continua, grave-media y alargada (0.95s)
+      const baseFreq = cueType === 'rest' ? 400 : 500;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1100, now);
+      filter.connect(this.masterGain);
+
+      const layers = [
+        { freq: baseFreq * 0.5, type: 'triangle' as OscillatorType, amp: 0.5 },
+        { freq: baseFreq, type: 'triangle' as OscillatorType, amp: 0.82 },
+        { freq: baseFreq * 1.25, type: 'sine' as OscillatorType, amp: 0.28 },
+      ];
+
+      layers.forEach(({ freq, type, amp }) => {
+        const osc = ctx.createOscillator();
+        const env = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.linearRampToValueAtTime(amp, now + 0.015);
+        env.gain.setValueAtTime(amp * 0.88, now + 0.74);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + 0.96);
+
+        osc.connect(env);
+        env.connect(filter);
+        osc.start(now);
+        osc.stop(now + 0.98);
       });
     }
   }

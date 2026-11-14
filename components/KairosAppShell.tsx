@@ -15,6 +15,7 @@ import { ScienceLibraryView } from '@/components/ScienceLibraryView';
 import { AnalyticsView } from '@/components/AnalyticsView';
 import { HistoryView } from '@/components/HistoryView';
 import { ImpactReportModal } from '@/components/ImpactReportModal';
+import { SessionNotificationBanners } from '@/components/SessionNotificationBanners';
 import {
   HeartRateTelemetryProvider,
   FloatingHeartRateHUD,
@@ -96,6 +97,7 @@ function KairosInnerWorkspace() {
             <FloatingHeartRateHUD />
             {activeTab !== 'timer' && <FloatingWorkoutTimerHUD />}
             <FloatingAiCoachButton />
+            <SessionNotificationBanners />
 
             <ImpactReportModal
               report={latestImpactReport}

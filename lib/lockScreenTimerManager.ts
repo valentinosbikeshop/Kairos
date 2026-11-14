@@ -275,3 +275,55 @@ export async function clearLockScreenTimerNotification(): Promise<void> {
     }
   }
 }
+
+/**
+ * Emite una notificación del sistema para recordatorio de guardar sesión o auto-guardado
+ * cuando el usuario se encuentra fuera de la aplicación o en segundo plano.
+ */
+export async function emitSessionSystemNotification(params: {
+  title: string;
+  body: string;
+  tag?: string;
+  requireInteraction?: boolean;
+}): Promise<void> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && reg.showNotification) {
+        await reg.showNotification(params.title, {
+          body: params.body,
+          icon: '/icon',
+          badge: '/icon',
+          tag: params.tag || 'kairos-session-notification',
+          renotify: true,
+          requireInteraction: Boolean(params.requireInteraction),
+          silent: false,
+          vibrate: [300, 100, 300, 100, 450],
+        } as NotificationOptions);
+        return;
+      }
+    }
+
+    if (activeNotificationRef) {
+      try {
+        activeNotificationRef.close();
+      } catch {
+        // Ignore
+      }
+    }
+
+    activeNotificationRef = new Notification(params.title, {
+      body: params.body,
+      icon: '/icon',
+      badge: '/icon',
+      tag: params.tag || 'kairos-session-notification',
+      requireInteraction: Boolean(params.requireInteraction),
+      silent: false,
+    } as NotificationOptions);
+  } catch {
+    // Ignore notification errors
+  }
+}

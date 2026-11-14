@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Clock,
   Dumbbell,
   Flame,
   Heart,
@@ -834,6 +835,42 @@ export function WorkoutStudio() {
                   activeSuggestionDay?.focusTitle || 'Entrenamiento del día'
                 }".`}
           </p>
+
+          {activeWorkout.firstExerciseAddedAtMs && totalExercisesCount > 0 && (
+            <div className="flex items-center gap-1.5 pt-0.5 text-[10.5px] text-brand-muted/80 font-mono">
+              <Clock className="h-3 w-3 text-[#DEB868]" />
+              <span>
+                Primer ejercicio añadido{' '}
+                {(() => {
+                  const min = Math.max(
+                    0,
+                    Math.floor((Date.now() - activeWorkout.firstExerciseAddedAtMs) / 60000)
+                  );
+                  if (min < 60) return `hace ${min} min`;
+                  const hrs = Math.floor(min / 60);
+                  const remMin = min % 60;
+                  return `hace ${hrs}h ${remMin}m`;
+                })()}
+              </span>
+              <span>·</span>
+              <span className="text-[#DEB868]/90">
+                Auto-guardado en{' '}
+                {(() => {
+                  const rem = Math.max(
+                    0,
+                    Math.floor(
+                      (135 * 60 * 1000 - (Date.now() - activeWorkout.firstExerciseAddedAtMs)) / 60000
+                    )
+                  );
+                  if (rem <= 0) return 'proceso...';
+                  if (rem < 60) return `${rem} min`;
+                  const hrs = Math.floor(rem / 60);
+                  const remMin = rem % 60;
+                  return `${hrs}h ${remMin}m`;
+                })()}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* ================= AUTO-RECORDED INTERVALS & ISOMETRICS ONLY ================= */}

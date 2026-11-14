@@ -20,6 +20,8 @@ export interface ActiveWorkoutDraft {
   notes: string;
   blocks: WorkoutBlock[];
   timerLogs: SessionTimerLog[];
+  firstExerciseAddedAtMs?: number;
+  reminder105mSent?: boolean;
 }
 
 export interface PersistedUserDataSnapshot {
@@ -111,6 +113,24 @@ export function loadCachedUserSnapshot(): PersistedUserDataSnapshot | null {
   }
 }
 
+export const SESSION_REMINDER_THRESHOLD_MS = 105 * 60 * 1000; // 1 hr 45 min = 6,300,000 ms
+export const SESSION_AUTOSAVE_THRESHOLD_MS = 135 * 60 * 1000; // 2 hr 15 min = 8,100,000 ms
+
+/**
+ * Calcula con precisión el momento en que se añade el primer ejercicio de la sesión.
+ * Si no hay ejercicios resultantes, retorna undefined.
+ * Si ya estaba fijado y se agregan más, conserva el timestamp original.
+ */
+export function computeFirstExerciseTimestamp(
+  prevFirstAddedAtMs: number | undefined,
+  currentTotalExercises: number,
+  nextTotalExercises: number
+): number | undefined {
+  if (nextTotalExercises === 0) return undefined;
+  if (currentTotalExercises === 0 && nextTotalExercises > 0) return Date.now();
+  return prevFirstAddedAtMs || Date.now();
+}
+
 export function defaultAudioSettings(): AudioSettings {
   return {
     gainPercent: 110,
@@ -127,5 +147,7 @@ export function createEmptyWorkoutDraft(placeholder?: string): ActiveWorkoutDraf
     notes: '',
     blocks: [],
     timerLogs: [],
+    firstExerciseAddedAtMs: undefined,
+    reminder105mSent: false,
   };
 }

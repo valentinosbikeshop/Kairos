@@ -47,6 +47,7 @@ import {
 } from '@/lib/exerciseClassifierEngine';
 import {
   ActiveWorkoutDraft,
+  computeFirstExerciseTimestamp,
   createEmptyWorkoutDraft,
   defaultAudioSettings,
   KairosBackupPayload,
@@ -56,6 +57,8 @@ import {
   requestPersistentBrowserStorage,
   saveAuthTokenToStorage,
   saveCachedUserSnapshot,
+  SESSION_AUTOSAVE_THRESHOLD_MS,
+  SESSION_REMINDER_THRESHOLD_MS,
 } from '@/lib/storage';
 import {
   adaptRoutineForSkippedDay,
@@ -68,6 +71,16 @@ import { kairosAudio } from '@/lib/audioEngine';
 import { buildSessionImpactReport, evaluateAllExercises } from '@/lib/analyticsEngine';
 import { getResolvedWorkoutDefaults, MODE_META, uid } from '@/lib/formatters';
 import { useTimerEngine } from '@/components/TimerEngine';
+import {
+  emitSessionSystemNotification,
+  requestLockNotificationPermission,
+} from '@/lib/lockScreenTimerManager';
+
+export {
+  computeFirstExerciseTimestamp,
+  SESSION_AUTOSAVE_THRESHOLD_MS,
+  SESSION_REMINDER_THRESHOLD_MS,
+};
 
 interface KairosContextValue {
   hydrated: boolean;
@@ -161,6 +174,12 @@ interface KairosContextValue {
   removeTimerLog: (logId: string) => void;
   finishAndAnalyzeWorkout: () => { ok: boolean; reason?: 'missing_title' | 'empty_blocks' };
   clearActiveWorkoutBlocks: () => void;
+
+  // Session Timeouts (1h 45m reminder & 2h 15m auto-save)
+  sessionReminderBannerOpen: boolean;
+  dismissSessionReminderBanner: () => void;
+  sessionAutoSavedNotice: { title: string; savedAt: number } | null;
+  dismissSessionAutoSavedNotice: () => void;
 
   // Impact Report Modal
   latestImpactReport: SessionImpactReport | null;
@@ -412,6 +431,21 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
 
   const [titleRequiredError, setTitleRequiredError] = useState(false);
   const [sessionElapsedSeconds, setSessionElapsedSeconds] = useState(0);
+  const [sessionReminderBannerOpen, setSessionReminderBannerOpen] = useState(false);
+  const [sessionAutoSavedNotice, setSessionAutoSavedNotice] = useState<{
+    title: string;
+    savedAt: number;
+  } | null>(null);
+  const isAutoSavingRef = useRef(false);
+
+  const dismissSessionReminderBanner = useCallback(() => {
+    setSessionReminderBannerOpen(false);
+  }, []);
+
+  const dismissSessionAutoSavedNotice = useCallback(() => {
+    setSessionAutoSavedNotice(null);
+  }, []);
+
   const [latestImpactReport, setLatestImpactReport] = useState<SessionImpactReport | null>(null);
   const [researchingExercises, setResearchingExercises] = useState<Record<string, boolean>>({});
 
@@ -435,6 +469,14 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
     const cleanActiveWorkout = snap.activeWorkout
       ? cleanActiveWorkoutExercises(snap.activeWorkout).activeWorkout
       : createEmptyWorkoutDraft();
+
+    if (
+      cleanActiveWorkout &&
+      cleanActiveWorkout.blocks.some((b: WorkoutBlock) => b.exercises?.length > 0) &&
+      !cleanActiveWorkout.firstExerciseAddedAtMs
+    ) {
+      cleanActiveWorkout.firstExerciseAddedAtMs = cleanActiveWorkout.startedAtMs || Date.now();
+    }
 
     setUser(snap.user);
     setProfile(snap.profile ?? null);
@@ -965,6 +1007,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       kairosAudio.playSetCheckFeedback();
       setTitleRequiredError(false);
 
+      const hasExercises = blocks.some((b) => b.exercises.length > 0);
       const nextWorkout: ActiveWorkoutDraft = {
         title: effectiveDayPlan.focusTitle || '',
         titlePlaceholder: `Ej: ${effectiveDayPlan.focusTitle}`,
@@ -973,6 +1016,8 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
         notes: '',
         blocks,
         timerLogs: [],
+        firstExerciseAddedAtMs: hasExercises ? Date.now() : undefined,
+        reminder105mSent: false,
       };
       setActiveWorkout(nextWorkout);
       void pushStateToServer({ activeWorkout: nextWorkout });
@@ -983,6 +1028,10 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
 
   const addRoutineExerciseToWorkout = useCallback(
     (prescription: RoutineExercisePrescription, dayFocusTitle?: string) => {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        void requestLockNotificationPermission();
+      }
+
       const builtExercise = buildWorkoutExerciseFromPrescription(
         prescription,
         catalog,
@@ -992,6 +1041,10 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       kairosAudio.playSetCheckFeedback();
 
       setActiveWorkout((prev) => {
+        const currentExercisesCount = prev.blocks.reduce(
+          (sum, b) => sum + (b.exercises?.length || 0),
+          0
+        );
         const nextBlocks = [...prev.blocks];
         // Append to last block if same mode, or find existing block with same mode, or create one
         let targetIdx = -1;
@@ -1023,8 +1076,19 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
           });
         }
 
+        const nextExercisesCount = nextBlocks.reduce(
+          (sum, b) => sum + (b.exercises?.length || 0),
+          0
+        );
+        const firstAdded = computeFirstExerciseTimestamp(
+          prev.firstExerciseAddedAtMs,
+          currentExercisesCount,
+          nextExercisesCount
+        );
+
         return {
           ...prev,
+          firstExerciseAddedAtMs: firstAdded,
           titlePlaceholder:
             prev.titlePlaceholder || (dayFocusTitle ? `Ej: ${dayFocusTitle}` : prev.titlePlaceholder),
           blocks: nextBlocks,
@@ -1139,9 +1203,16 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
 
   const addExerciseToBlock = useCallback(
     (blockId: string, item: ExerciseCatalogItem) => {
-      setActiveWorkout((prev) => ({
-        ...prev,
-        blocks: prev.blocks.map((blk) => {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        void requestLockNotificationPermission();
+      }
+
+      setActiveWorkout((prev) => {
+        const currentExercisesCount = prev.blocks.reduce(
+          (sum, b) => sum + (b.exercises?.length || 0),
+          0
+        );
+        const nextBlocks = prev.blocks.map((blk) => {
           if (blk.id !== blockId) return blk;
           const entry = createDefaultExerciseEntry(
             item,
@@ -1154,8 +1225,23 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
             ...blk,
             exercises: [...blk.exercises, entry],
           };
-        }),
-      }));
+        });
+        const nextExercisesCount = nextBlocks.reduce(
+          (sum, b) => sum + (b.exercises?.length || 0),
+          0
+        );
+        const firstAdded = computeFirstExerciseTimestamp(
+          prev.firstExerciseAddedAtMs,
+          currentExercisesCount,
+          nextExercisesCount
+        );
+
+        return {
+          ...prev,
+          firstExerciseAddedAtMs: firstAdded,
+          blocks: nextBlocks,
+        };
+      });
     },
     [profile, sessions]
   );
@@ -1359,14 +1445,23 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
   );
 
   const removeExerciseFromBlock = useCallback((blockId: string, exerciseId: string) => {
-    setActiveWorkout((prev) => ({
-      ...prev,
-      blocks: prev.blocks.map((blk) =>
+    setActiveWorkout((prev) => {
+      const nextBlocks = prev.blocks.map((blk) =>
         blk.id === blockId
           ? { ...blk, exercises: blk.exercises.filter((e) => e.id !== exerciseId) }
           : blk
-      ),
-    }));
+      );
+      const remainingTotal = nextBlocks.reduce(
+        (sum, b) => sum + (b.exercises?.length || 0),
+        0
+      );
+      return {
+        ...prev,
+        blocks: nextBlocks,
+        firstExerciseAddedAtMs: remainingTotal > 0 ? prev.firstExerciseAddedAtMs : undefined,
+        reminder105mSent: remainingTotal > 0 ? prev.reminder105mSent : false,
+      };
+    });
   }, []);
 
   const mutateExercise = useCallback(
@@ -1399,6 +1494,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
   const clearActiveWorkoutBlocks = useCallback(() => {
     setTitleRequiredError(false);
     setActiveWorkout(createEmptyWorkoutDraft());
+    setSessionReminderBannerOpen(false);
   }, []);
 
   const finishAndAnalyzeWorkout = useCallback((): {
@@ -1476,6 +1572,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
     const report = buildSessionImpactReport(completedSession, nextSessions);
     setLatestImpactReport(report);
     setTitleRequiredError(false);
+    setSessionReminderBannerOpen(false);
     kairosAudio.playCompletionCue('finish');
 
     const freshDraft = createEmptyWorkoutDraft(`Ej: ${cleanTitle}`);
@@ -1492,6 +1589,107 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
   const dismissImpactReport = useCallback(() => {
     setLatestImpactReport(null);
   }, []);
+
+  // Watcher de alta fidelidad para Recordatorio (1h 45m) y Auto-guardado (2h 15m) desde el primer ejercicio
+  useEffect(() => {
+    if (!hydrated || !user) return;
+
+    const checkSessionTimeouts = () => {
+      const totalExercises = activeWorkout.blocks.reduce(
+        (acc, b) => acc + (b.exercises?.length || 0),
+        0
+      );
+      const validTimerLogs = (activeWorkout.timerLogs ?? []).filter((t) => t.kind !== 'rest');
+
+      // Si no hay ejercicios ni logs activos, desarmar recordatorios
+      if (totalExercises === 0 && validTimerLogs.length === 0) {
+        if (sessionReminderBannerOpen) {
+          setSessionReminderBannerOpen(false);
+        }
+        return;
+      }
+
+      const firstAddedMs = activeWorkout.firstExerciseAddedAtMs || activeWorkout.startedAtMs;
+      if (!firstAddedMs) return;
+
+      const now = Date.now();
+      const elapsedMs = now - firstAddedMs;
+
+      // 1. Auto-guardado obligatorio a las 2h 15 min (135 min)
+      if (elapsedMs >= SESSION_AUTOSAVE_THRESHOLD_MS) {
+        if (isAutoSavingRef.current) return;
+        isAutoSavingRef.current = true;
+
+        const cleanTitle =
+          activeWorkout.title.trim() ||
+          activeWorkout.titlePlaceholder?.replace(/^Ej:\s*/i, '').trim() ||
+          'Entrenamiento del día';
+
+        const result = finishAndAnalyzeWorkout();
+        if (result.ok) {
+          setSessionReminderBannerOpen(false);
+          setSessionAutoSavedNotice({
+            title: cleanTitle,
+            savedAt: now,
+          });
+
+          void emitSessionSystemNotification({
+            title: 'KAIROS — Sesión Guardada Automáticamente',
+            body: 'Han transcurrido 2h 15m desde tu primer ejercicio. Tu sesión ha sido guardada y analizada con éxito para proteger tu progreso.',
+            tag: 'kairos-session-autosaved-135m',
+            requireInteraction: true,
+          });
+        }
+
+        setTimeout(() => {
+          isAutoSavingRef.current = false;
+        }, 5000);
+        return;
+      }
+
+      // 2. Recordatorio en la app y notificación del sistema a la 1h 45 min (105 min)
+      if (elapsedMs >= SESSION_REMINDER_THRESHOLD_MS && !activeWorkout.reminder105mSent) {
+        setActiveWorkout((prev) => ({ ...prev, reminder105mSent: true }));
+        setSessionReminderBannerOpen(true);
+        kairosAudio.playCompletionCue('finish');
+
+        void emitSessionSystemNotification({
+          title: 'KAIROS — Recordatorio de Sesión',
+          body: 'Han pasado 1h 45m desde que añadiste tu primer ejercicio. No olvides guardar tu sesión para registrar tu progreso y fatiga.',
+          tag: 'kairos-session-reminder-105m',
+          requireInteraction: true,
+        });
+      }
+    };
+
+    checkSessionTimeouts();
+    const intervalId = setInterval(checkSessionTimeouts, 4000);
+
+    const handleResumeOrFocus = () => {
+      checkSessionTimeouts();
+    };
+
+    document.addEventListener('visibilitychange', handleResumeOrFocus);
+    window.addEventListener('focus', handleResumeOrFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleResumeOrFocus);
+      window.removeEventListener('focus', handleResumeOrFocus);
+    };
+  }, [
+    activeWorkout.blocks,
+    activeWorkout.firstExerciseAddedAtMs,
+    activeWorkout.reminder105mSent,
+    activeWorkout.startedAtMs,
+    activeWorkout.timerLogs,
+    activeWorkout.title,
+    activeWorkout.titlePlaceholder,
+    finishAndAnalyzeWorkout,
+    hydrated,
+    sessionReminderBannerOpen,
+    user,
+  ]);
 
   const deleteSession = useCallback((sessionId: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
@@ -1556,6 +1754,7 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       })),
     }));
 
+    const hasExercises = clonedBlocks.some((b) => b.exercises.length > 0);
     setTitleRequiredError(false);
     setActiveWorkout({
       title: '',
@@ -1564,7 +1763,10 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       notes: '',
       blocks: clonedBlocks,
       timerLogs: [],
+      firstExerciseAddedAtMs: hasExercises ? Date.now() : undefined,
+      reminder105mSent: false,
     });
+    setSessionReminderBannerOpen(false);
     setActiveTab('workout');
   }, []);
 
@@ -1657,6 +1859,10 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       removeTimerLog,
       finishAndAnalyzeWorkout,
       clearActiveWorkoutBlocks,
+      sessionReminderBannerOpen,
+      dismissSessionReminderBanner,
+      sessionAutoSavedNotice,
+      dismissSessionAutoSavedNotice,
       latestImpactReport,
       dismissImpactReport,
       deleteSession,
@@ -1712,6 +1918,10 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       removeTimerLog,
       finishAndAnalyzeWorkout,
       clearActiveWorkoutBlocks,
+      sessionReminderBannerOpen,
+      dismissSessionReminderBanner,
+      sessionAutoSavedNotice,
+      dismissSessionAutoSavedNotice,
       latestImpactReport,
       dismissImpactReport,
       deleteSession,

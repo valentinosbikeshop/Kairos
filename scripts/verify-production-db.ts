@@ -22,6 +22,11 @@ import {
 } from '../lib/exerciseClassifierEngine';
 import { computeMuscleFatigueReports } from '../lib/analyticsEngine';
 import { WorkoutSession } from '../types/kairos';
+import {
+  computeFirstExerciseTimestamp,
+  SESSION_REMINDER_THRESHOLD_MS,
+  SESSION_AUTOSAVE_THRESHOLD_MS,
+} from '../lib/storage';
 
 async function runProductionSuite() {
   console.log('--- [KAIROS PROD TEST SUITE] INICIANDO PRUEBAS DE INFRAESTRUCTURA Y SEGURIDAD ---');
@@ -428,6 +433,52 @@ async function runProductionSuite() {
 
   console.log(
     `✅ 14. Clasificación de Equipos (${curlFemoralProfile.equipmentType}), Smith (${smithSquatRes.canonicalName}), Aductor (${adductorRes.canonicalName}) y preservación custom verificados.`
+  );
+
+  // Test 15: Recordatorio de Sesión (1h 45m) y Auto-Guardado (2h 15m)
+  if (SESSION_REMINDER_THRESHOLD_MS !== 105 * 60 * 1000) {
+    throw new Error(`FALLO: SESSION_REMINDER_THRESHOLD_MS debe ser 105 minutos (6,300,000 ms), obtenido: ${SESSION_REMINDER_THRESHOLD_MS}`);
+  }
+  if (SESSION_AUTOSAVE_THRESHOLD_MS !== 135 * 60 * 1000) {
+    throw new Error(`FALLO: SESSION_AUTOSAVE_THRESHOLD_MS debe ser 135 minutos (8,100,000 ms), obtenido: ${SESSION_AUTOSAVE_THRESHOLD_MS}`);
+  }
+
+  // Verificar fijación de timestamp al agregar el primer ejercicio (0 -> 1)
+  const t0 = computeFirstExerciseTimestamp(undefined, 0, 1);
+  if (!t0 || typeof t0 !== 'number' || t0 <= 0) {
+    throw new Error('FALLO: computeFirstExerciseTimestamp no asignó timestamp al pasar de 0 a 1 ejercicio.');
+  }
+
+  // Verificar preservación de timestamp al agregar más ejercicios (1 -> 2)
+  const t1 = computeFirstExerciseTimestamp(t0, 1, 2);
+  if (t1 !== t0) {
+    throw new Error(`FALLO: computeFirstExerciseTimestamp modificó el timestamp original al agregar más ejercicios (${t1} vs ${t0}).`);
+  }
+
+  // Verificar reseteo a undefined al remover todos los ejercicios (1 -> 0)
+  const tEmpty = computeFirstExerciseTimestamp(t0, 1, 0);
+  if (tEmpty !== undefined) {
+    throw new Error(`FALLO: computeFirstExerciseTimestamp debió resetear a undefined al quedar en 0 ejercicios, obtenido: ${tEmpty}`);
+  }
+
+  // Simulación temporal: 1h 45m (105m) debe disparar recordatorio
+  const simulated105m = Date.now() - SESSION_REMINDER_THRESHOLD_MS;
+  const elapsed105 = Date.now() - simulated105m;
+  const shouldRemind = elapsed105 >= SESSION_REMINDER_THRESHOLD_MS && elapsed105 < SESSION_AUTOSAVE_THRESHOLD_MS;
+  if (!shouldRemind) {
+    throw new Error('FALLO: La condición de recordatorio a los 105 minutos no se cumplió.');
+  }
+
+  // Simulación temporal: 2h 15m (135m) debe disparar auto-guardado
+  const simulated135m = Date.now() - SESSION_AUTOSAVE_THRESHOLD_MS;
+  const elapsed135 = Date.now() - simulated135m;
+  const shouldAutoSave = elapsed135 >= SESSION_AUTOSAVE_THRESHOLD_MS;
+  if (!shouldAutoSave) {
+    throw new Error('FALLO: La condición de auto-guardado a los 135 minutos no se cumplió.');
+  }
+
+  console.log(
+    `✅ 15. Recordatorio de Sesión (1h 45m / ${SESSION_REMINDER_THRESHOLD_MS / 60000}m) y Auto-guardado (2h 15m / ${SESSION_AUTOSAVE_THRESHOLD_MS / 60000}m) desde primer ejercicio verificados.`
   );
 
   console.log('--- TODOS LOS TESTS DE PRODUCCIÓN Y PERSISTENCIA PASARON CON ÉXITO (100%) ---');

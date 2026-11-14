@@ -447,6 +447,679 @@ export const BUILTIN_EXERCISES: ExerciseCatalogItem[] = [
     defaultRestSeconds: 75,
     biomechanicalCue: 'Enrolla la columna acercando costillas a la pelvis.',
   },
+  // --- Pierna & Glúteo Expandido ---
+  {
+    id: 'hyp_smith_squat',
+    name: 'Sentadilla en Multipower (Smith)',
+    aliases: ['sentadilla en smith', 'smith squat', 'sentadilla multipower', 'sentadilla guiada'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Cuádriceps / Glúteos',
+    defaultRestSeconds: 150,
+    biomechanicalCue: 'Adelanta ligeramente los pies respecto a la barra para maximizar la flexión de rodilla.',
+  },
+  {
+    id: 'hyp_pendulum_squat',
+    name: 'Sentadilla Péndulo en Máquina',
+    aliases: ['sentadilla pendulo', 'pendulum squat', 'maquina pendulo'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Cuádriceps (Vasto Lateral y Medial)',
+    defaultRestSeconds: 150,
+    biomechanicalCue: 'Baja en arco profundo manteniendo los talones apoyados sin despegar la lumbar.',
+  },
+  {
+    id: 'hyp_hip_adductor_machine',
+    name: 'Aductor de Cadera en Máquina',
+    aliases: ['aductor de cadera', 'aductores en maquina', 'maquina de aductores', 'hip adduction', 'cierre de piernas'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Aductores (Mayor, Largo y Corto)',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Controla la apertura excéntrica hasta el estiramiento máximo y cierra sin impulso.',
+  },
+  {
+    id: 'hyp_hip_abductor_machine',
+    name: 'Abductor de Cadera en Máquina',
+    aliases: ['abductor de cadera', 'abductores en maquina', 'maquina de abductores', 'hip abduction', 'apertura de piernas'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Glúteo Medio y Menor',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Inclina ligeramente el torso hacia adelante si buscas mayor activación del glúteo medio.',
+  },
+  {
+    id: 'hyp_horizontal_leg_press',
+    name: 'Prensa Horizontal en Máquina',
+    aliases: ['prensa horizontal', 'prensa sentada', 'prensa de placas', 'horizontal leg press'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Cuádriceps y Glúteos',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Mantén rodillas alineadas con punteras y controla la fase excéntrica en 2-3 segundos.',
+  },
+  {
+    id: 'hyp_belt_squat',
+    name: 'Sentadilla en Belt Squat',
+    aliases: ['belt squat', 'sentadilla con cinturon', 'sentadilla pit shark'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Cuádriceps',
+    defaultRestSeconds: 150,
+    biomechanicalCue: 'Carga axial cero en columna; desciende verticalmente empujando rodillas hacia adelante.',
+  },
+  {
+    id: 'hyp_sissy_squat',
+    name: 'Sentadilla Sissy',
+    aliases: ['sissy squat', 'sentadilla sissy en banco', 'extension sissy'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Recto Femoral / Cuádriceps',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Alinea rodillas, cadera y torso en una línea rígida descendiendo en estiramiento extremo.',
+  },
+  {
+    id: 'hyp_cable_glute_kickback',
+    name: 'Patada de Glúteo en Polea Baja',
+    aliases: ['patada de gluteo', 'patada en polea', 'glute kickback', 'extension de cadera en polea'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Glúteo Mayor',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Extiende la cadera a 20-30° hacia atrás/afuera sin arquear la zona lumbar.',
+  },
+  {
+    id: 'hyp_smith_split_squat',
+    name: 'Búlgara / Zancada en Multipower (Smith)',
+    aliases: ['zancada en smith', 'bulgara en smith', 'split squat smith'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Cuádriceps y Glúteos',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Estabilidad total de la máquina para llevar la pierna delantera al fallo técnico seguro.',
+  },
+  {
+    id: 'hyp_step_up_db',
+    name: 'Subida al Cajón con Mancuernas (Step-Up)',
+    aliases: ['step up', 'subida al cajon', 'subida a banco'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Glúteos y Cuádriceps',
+    defaultRestSeconds: 105,
+    biomechanicalCue: 'Sube exclusivamente empujando con el talón de la pierna elevada, sin impulsarte desde abajo.',
+  },
+  {
+    id: 'hyp_hyperextension_glute',
+    name: 'Hiperextensión Lumbar / Glúteo a 45°',
+    aliases: ['hiperextensiones', 'banco de lumbares', 'back extension', 'extension de cadera 45'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Glúteos / Erectores',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Redondea suavemente la espalda alta para aislar glúteos e isquios en la extensión de cadera.',
+  },
+  {
+    id: 'hyp_reverse_hyper',
+    name: 'Hiperextensión Inversa (Reverse Hyper)',
+    aliases: ['reverse hyper', 'hiperextension inversa'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Glúteos e Isquiosurales',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Controla el balanceo evitando golpear la lumbar en el punto más alto.',
+  },
+  {
+    id: 'hyp_goblet_squat',
+    name: 'Sentadilla Goblet con Mancuerna',
+    aliases: ['goblet squat', 'sentadilla copa', 'sentadilla con mancuerna'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Cuádriceps',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Codos apuntando al suelo pegados al torso; baja profundo entre tus caderas.',
+  },
+  {
+    id: 'hyp_smith_rdl',
+    name: 'Peso Muerto Rumano en Multipower (Smith)',
+    aliases: ['rdl en smith', 'rumano en multipower', 'peso muerto rumano smith'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Isquiosurales y Glúteos',
+    defaultRestSeconds: 150,
+    biomechanicalCue: 'Empuja la cadera hacia atrás deslizando la barra pegada a los muslos hasta sentir estiramiento isquiosural.',
+  },
+  {
+    id: 'hyp_db_rdl',
+    name: 'Peso Muerto Rumano con Mancuernas',
+    aliases: ['rdl con mancuernas', 'rumano mancuernas', 'peso muerto con mancuernas'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Isquiosurales y Glúteos',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Desciende las mancuernas rozando los cuádriceps mientras mantienes bisagra de cadera estricta.',
+  },
+  {
+    id: 'hyp_single_leg_curl',
+    name: 'Curl Femoral Unilateral de Pie en Máquina',
+    aliases: ['femoral de pie', 'curl femoral a una pierna', 'standing leg curl'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Isquiosurales',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Fija el muslo contra la almohadilla evitando flexionar la cadera al subir el peso.',
+  },
+  {
+    id: 'hyp_nordic_curl',
+    name: 'Curl Nórdico de Isquiosurales',
+    aliases: ['nordic curl', 'curl nordico'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Isquiosurales',
+    defaultRestSeconds: 150,
+    biomechanicalCue: 'Frena la caída excéntrica durante 3-5 segundos manteniendo la cadera completamente extendida.',
+  },
+  {
+    id: 'hyp_smith_hip_thrust',
+    name: 'Hip Thrust en Multipower (Smith)',
+    aliases: ['hip thrust en smith', 'empuje de cadera multipower'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Glúteo Mayor',
+    defaultRestSeconds: 150,
+    biomechanicalCue: 'Escápulas apoyadas sobre el banco, mentón recogido y bloqueo pélvico de 1 segundo arriba.',
+  },
+  {
+    id: 'hyp_machine_hip_thrust',
+    name: 'Hip Thrust en Máquina (Glute Builder)',
+    aliases: ['hip thrust en maquina', 'glute drive', 'maquina de gluteo'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Glúteo Mayor',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Ajusta el cinturón sobre la pelvis y realiza extensión completa sin hiperextender la lumbar.',
+  },
+  {
+    id: 'hyp_calf_leg_press',
+    name: 'Elevación de Talones en Prensa 45°',
+    aliases: ['gemelos en prensa', 'pantorrillas en prensa'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pantorrillas (Gemelos)',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Pausa de 2 segundos en estiramiento máximo en el fondo de cada repetición.',
+  },
+  {
+    id: 'hyp_tibialis_raise',
+    name: 'Elevación de Tibial Anterior',
+    aliases: ['tibialis raise', 'tibial anterior'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Tibial Anterior',
+    defaultRestSeconds: 60,
+    biomechanicalCue: 'Dorsiflexión completa llevando el empeine lo más alto posible hacia la tibia.',
+  },
+  // --- Pectoral Expandido ---
+  {
+    id: 'hyp_decline_barbell_press',
+    name: 'Press de Banca Declinado con Barra',
+    aliases: ['press declinado', 'banca declinada', 'decline bench press'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral Inferior',
+    defaultRestSeconds: 150,
+    biomechanicalCue: 'Trayectoria hacia el esternón inferior manteniendo retracción escapular constante.',
+  },
+  {
+    id: 'hyp_decline_db_press',
+    name: 'Press Declinado con Mancuernas',
+    aliases: ['press declinado mancuernas', 'declinado c/manc'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral Inferior',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Desciende profundo abriendo el pecho en el banco declinado sin juntar mancuernas en exceso.',
+  },
+  {
+    id: 'hyp_smith_incline_press',
+    name: 'Press Inclinado en Multipower (Smith)',
+    aliases: ['press inclinado smith', 'inclinado en multipower', 'smith incline press'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral Superior (Clavicular)',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Banco a 30°; desciende la barra guiada hasta la parte superior del pecho bajo la clavícula.',
+  },
+  {
+    id: 'hyp_smith_flat_press',
+    name: 'Press Plano en Multipower (Smith)',
+    aliases: ['press plano smith', 'banca en smith', 'multipower pecho'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral Medio',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Máxima estabilidad para sobrecarga mecánica directa en fibras esternales del pectoral.',
+  },
+  {
+    id: 'hyp_incline_machine_press',
+    name: 'Press Inclinado en Máquina Convergente',
+    aliases: ['press inclinado maquina', 'hammer inclinado', 'incline chest press machine'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral Superior (Clavicular)',
+    defaultRestSeconds: 105,
+    biomechanicalCue: 'Empuja en el plano escapular aprovechando el arco convergente hasta el fallo muscular.',
+  },
+  {
+    id: 'hyp_decline_machine_press',
+    name: 'Press Declinado en Máquina (Hammer)',
+    aliases: ['hammer declinado', 'press inferior maquina'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral Inferior',
+    defaultRestSeconds: 105,
+    biomechanicalCue: 'Hombros deprimidos hacia abajo; enfoca la tensión en fibras abdominales/esternales.',
+  },
+  {
+    id: 'hyp_flat_db_fly',
+    name: 'Aperturas Planas con Mancuernas',
+    aliases: ['aperturas mancuernas', 'dumbbell fly', 'cristos con mancuernas'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Codos semiflexionados fijos; prioriza el estiramiento profundo sin forzar la cápsula anterior.',
+  },
+  {
+    id: 'hyp_incline_db_fly',
+    name: 'Aperturas Inclinadas con Mancuernas',
+    aliases: ['aperturas inclinadas', 'incline dumbbell fly'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral Superior',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Traza un arco amplio en banco a 30° enfocando la tensión en el haz clavicular.',
+  },
+  {
+    id: 'hyp_low_to_high_cable_fly',
+    name: 'Cruces en Polea Baja a Alta',
+    aliases: ['cruces desde abajo', 'low to high cable fly', 'cruce polea inferior'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral Superior',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Eleva los puños hacia la altura de la barbilla cruzando ligeramente frente al esternón superior.',
+  },
+  {
+    id: 'hyp_high_to_low_cable_fly',
+    name: 'Cruces en Polea Alta (Pectoral Inferior)',
+    aliases: ['cruces desde arriba', 'high to low cable fly', 'cruce polea alta'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral Inferior',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Inclina levemente el torso adelante y junta las manos por debajo de la línea del ombligo.',
+  },
+  {
+    id: 'hyp_db_pullover',
+    name: 'Pullover con Mancuerna',
+    aliases: ['pullover mancuerna', 'pull over mancuerna'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Pectoral / Dorsal',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Baja la mancuerna detrás de la cabeza manteniendo caja torácica expandida y brazos casi rectos.',
+  },
+  // --- Espalda & Trapecio Expandido ---
+  {
+    id: 'hyp_tbar_row',
+    name: 'Remo en Barra T con Apoyo (T-Bar Row)',
+    aliases: ['remo en t', 't bar row', 'remo gironda barra t', 'remo con apoyo al pecho'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Espalda Media y Dorsal',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Estabilidad total del torso contra la almohadilla para traccionar pesado con codos hacia atrás.',
+  },
+  {
+    id: 'hyp_landmine_row',
+    name: 'Remo en Punta / Landmine Unilateral',
+    aliases: ['remo en punta', 'landmine row', 'meadows row', 'remo meadows'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Dorsal Ancho',
+    defaultRestSeconds: 105,
+    biomechanicalCue: 'Permite una protracción escapular profunda al bajar y contracción dorsal máxima arriba.',
+  },
+  {
+    id: 'hyp_barbell_row',
+    name: 'Remo con Barra Libre (Inclinado)',
+    aliases: ['remo con barra', 'remo yates', 'barbell row', 'bent over row'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Espalda Alta y Dorsal',
+    defaultRestSeconds: 150,
+    biomechanicalCue: 'Torso firme entre 30-45°; lleva la barra hacia la cintura o abdomen bajo sin balanceo.',
+  },
+  {
+    id: 'hyp_smith_row',
+    name: 'Remo en Multipower (Smith)',
+    aliases: ['remo en smith', 'remo multipower'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Espalda Media',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Trayectoria fija que elimina demanda de estabilización para aislar dorsales y romboides.',
+  },
+  {
+    id: 'hyp_high_row_machine',
+    name: 'Jalón / Remo Alto en Máquina Convergente (High Row)',
+    aliases: ['high row', 'remo alto maquina', 'hammer high row', 'dy row'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Dorsal y Trapecio Medio',
+    defaultRestSeconds: 105,
+    biomechanicalCue: 'Tira llevando codos en diagonal hacia las costillas, soltando escápulas al estirar.',
+  },
+  {
+    id: 'hyp_low_row_machine',
+    name: 'Remo Bajo en Máquina Convergente (Low Row)',
+    aliases: ['low row machine', 'remo hammer bajo', 'remo convergente'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Dorsal Ancho',
+    defaultRestSeconds: 105,
+    biomechanicalCue: 'Pecho pegado al soporte; tracciona con los codos pegados al costado hacia la cadera.',
+  },
+  {
+    id: 'hyp_supine_lat_pulldown',
+    name: 'Jalón al Pecho Agarre Supino',
+    aliases: ['jalon supino', 'lat pulldown supino', 'jalon cerrado supino'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Dorsal Ancho',
+    defaultRestSeconds: 105,
+    biomechanicalCue: 'Agarre al ancho de hombros con palmas hacia ti para favorecer extensión de hombro del dorsal.',
+  },
+  {
+    id: 'hyp_close_lat_pulldown',
+    name: 'Jalón al Pecho Agarre Estrecho (Triángulo)',
+    aliases: ['jalon triangulo', 'jalon agarre v', 'close grip pulldown'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Dorsal Ancho',
+    defaultRestSeconds: 105,
+    biomechanicalCue: 'Lleva el triángulo hacia el esternón superior deprimendo los hombros antes de flexionar codos.',
+  },
+  {
+    id: 'hyp_single_arm_cable_pulldown',
+    name: 'Jalón Unilateral en Polea Alta (Iliac Pulldown)',
+    aliases: ['jalon unilateral', 'iliac pulldown', 'jalon a una mano'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Dorsal (Fibras Ilíacas)',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Alinea el cable con tu brazo y dirige el codo hacia la cresta ilíaca de ese mismo lado.',
+  },
+  {
+    id: 'hyp_single_arm_cable_row',
+    name: 'Remo Unilateral Sentado en Polea Baja',
+    aliases: ['remo unilateral polea', 'single arm cable row', 'remo a una mano polea'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Dorsal Ancho',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Permite una ligera rotación torácica al estirar y contrae el dorsal pegando el codo al flanco.',
+  },
+  {
+    id: 'hyp_barbell_shrugs',
+    name: 'Encogimientos de Trapecio con Barra',
+    aliases: ['encogimientos barra', 'shrugs', 'trapecio con barra'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Trapecio Superior',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Eleva hombros ligeramente en dirección a las orejas con pausa de 1s arriba, sin rotarlos.',
+  },
+  {
+    id: 'hyp_db_shrugs',
+    name: 'Encogimientos de Trapecio con Mancuernas',
+    aliases: ['encogimientos mancuernas', 'trapecio mancuernas', 'dumbbell shrugs'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Trapecio Superior',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Brazos extendidos a los lados en ángulo natural; evita doblar los codos al encoger.',
+  },
+  {
+    id: 'hyp_kelso_shrugs',
+    name: 'Kelso Shrugs en Banco Inclinado',
+    aliases: ['kelso shrugs', 'encogimientos kelso', 'trapecio medio banco'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Trapecio Medio y Romboides',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Pecho apoyado a 45°; junta las escápulas con brazos totalmente rectos.',
+  },
+  // --- Hombros Expandido ---
+  {
+    id: 'hyp_arnold_press',
+    name: 'Press Arnold con Mancuernas',
+    aliases: ['press arnold', 'arnold press', 'hombro arnold'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Deltoides Anterior y Lateral',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Inicia con palmas supinas frente al rostro y rota suavemente hasta pronación al extender.',
+  },
+  {
+    id: 'hyp_machine_shoulder_press',
+    name: 'Press de Hombros en Máquina Convergente',
+    aliases: ['press hombro maquina', 'maquina de hombros', 'shoulder press machine'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Deltoides Anterior',
+    defaultRestSeconds: 105,
+    biomechanicalCue: 'Respaldo firme; empuja verticalmente llevando los codos ligeramente por delante del plano frontal.',
+  },
+  {
+    id: 'hyp_machine_lateral_raise',
+    name: 'Elevaciones Laterales en Máquina',
+    aliases: ['laterales en maquina', 'maquina de laterales', 'lateral raise machine'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Deltoides Lateral',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Empuja contra las almohadillas desde los codos manteniendo resistencia constante todo el recorrido.',
+  },
+  {
+    id: 'hyp_lean_away_cable_lateral',
+    name: 'Elevación Lateral Inclinado en Polea',
+    aliases: ['laterales inclinadas', 'lean away lateral raise', 'elevacion lateral egipcia'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Deltoides Lateral',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Sujétate al poste e inclina el cuerpo lateralmente para maximizar tensión en el rango inicial.',
+  },
+  {
+    id: 'hyp_cable_y_raise',
+    name: 'Elevaciones en Y en Poleas',
+    aliases: ['y raise', 'elevaciones en y', 'cable y raise'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Deltoides Posterior / Trapecio Inferior',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Cruza los cables y eleva brazos formando una Y a 45° con escápulas estables.',
+  },
+  {
+    id: 'hyp_upright_row_ez',
+    name: 'Remo al Mentón (Barra Z / Polea)',
+    aliases: ['remo al menton', 'remo al cuello', 'upright row'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Deltoides Lateral / Trapecio',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Agarre amplio y sube solo hasta la altura del esternón superior protegiendo el manguito rotador.',
+  },
+  {
+    id: 'hyp_front_raise_cable',
+    name: 'Elevaciones Frontales en Polea / Mancuerna',
+    aliases: ['elevaciones frontales', 'front raise', 'hombro frontal'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Deltoides Anterior',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Eleva hasta la altura de los ojos con control excéntrico, sin balancear la zona lumbar.',
+  },
+  {
+    id: 'hyp_rear_delt_cable',
+    name: 'Pájaros en Polea Alta (Deltoides Posterior)',
+    aliases: ['pajaros en polea', 'cruce posterior', 'rear delt cable fly'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Deltoides Posterior',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Abre los brazos a 45° hacia atrás sin juntar en exceso las escápulas para aislar el deltoides posterior.',
+  },
+  {
+    id: 'hyp_db_rear_delt_fly',
+    name: 'Pájaros con Mancuernas en Banco Inclinado',
+    aliases: ['pajaros mancuernas', 'rear delt fly', 'vuelos posteriores'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Deltoides Posterior',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Torso apoyado en banco a 30°; barre hacia afuera pensando en alejar las mancuernas del cuerpo.',
+  },
+  // --- Bíceps & Antebrazo Expandido ---
+  {
+    id: 'hyp_ez_bar_curl',
+    name: 'Curl de Bíceps con Barra Z',
+    aliases: ['curl barra z', 'curl ez', 'curl biceps barra w'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Bíceps Braquial',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Agarre cómodo en ángulo natural reduciendo estrés en muñecas; codos fijos junto al torso.',
+  },
+  {
+    id: 'hyp_db_alternating_curl',
+    name: 'Curl Alterno con Mancuernas de Pie',
+    aliases: ['curl con mancuernas', 'curl alterno', 'dumbbell curl', 'curl supino mancuernas'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Bíceps Braquial',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Supina progresivamente el antebrazo desde neutro hasta palma arriba en el primer tercio.',
+  },
+  {
+    id: 'hyp_spider_curl',
+    name: 'Curl Araña en Banco Inclinado (Spider Curl)',
+    aliases: ['spider curl', 'curl arana', 'curl pecho apoyado'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Bíceps Braquial',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Pecho apoyado en el respaldo; brazos colgando verticalmente con picos de contracción altos.',
+  },
+  {
+    id: 'hyp_concentration_curl',
+    name: 'Curl Concentrado con Mancuerna',
+    aliases: ['curl concentrado', 'concentration curl'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Bíceps (Pico)',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Tríceps apoyado firme en la cara interna del muslo; aisla totalmente el bíceps sin balanceo.',
+  },
+  {
+    id: 'hyp_machine_preacher_curl',
+    name: 'Curl Predicador en Máquina',
+    aliases: ['predicador en maquina', 'maquina de biceps', 'biceps maquina', 'preacher machine'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Bíceps Braquial',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Alinea el eje de la máquina con tus codos y controla los primeros 10 cm desde extensión completa.',
+  },
+  {
+    id: 'hyp_high_cable_bicep_curl',
+    name: 'Curl de Bíceps Doble en Polea Alta (Hercules)',
+    aliases: ['curl doble polea', 'curl hercules', 'high cable bicep curl'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Bíceps Braquial',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Hombros abducidos a 90°; lleva los puños detrás de las orejas manteniendo los codos altos.',
+  },
+  {
+    id: 'hyp_cable_bar_curl',
+    name: 'Curl de Bíceps en Polea Baja con Barra',
+    aliases: ['curl en polea baja', 'cable bicep curl', 'curl polea'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Bíceps Braquial',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Tensión continua en todo el recorrido; evita adelantar los hombros al final del movimiento.',
+  },
+  {
+    id: 'hyp_reverse_curl_ez',
+    name: 'Curl Prono (Invertido) con Barra Z',
+    aliases: ['curl invertido', 'curl prono', 'reverse curl', 'antebrazo barra'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Braquiorradial y Antebrazo',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Agarre prono (palmas hacia abajo) con muñecas neutras para sobrecargar el braquiorradial.',
+  },
+  {
+    id: 'hyp_wrist_curl',
+    name: 'Curl de Muñeca (Flexores de Antebrazo)',
+    aliases: ['curl de muneca', 'antebrazos', 'wrist curl'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Antebrazo (Flexores)',
+    defaultRestSeconds: 60,
+    biomechanicalCue: 'Antebrazos apoyados sobre banco o muslos; flexiona la muñeca en rango completo controlado.',
+  },
+  // --- Tríceps Expandido ---
+  {
+    id: 'hyp_triceps_rope_pushdown',
+    name: 'Extensión de Tríceps en Polea con Cuerda',
+    aliases: ['triceps con cuerda', 'polea cuerda triceps', 'rope pushdown', 'extension cuerda'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Tríceps (Cabeza Lateral)',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Separa los cabos de la cuerda junto a los muslos al bloquear para máxima contracción.',
+  },
+  {
+    id: 'hyp_single_arm_triceps_pushdown',
+    name: 'Extensión de Tríceps Unilateral en Polea Alta',
+    aliases: ['triceps unilateral polea', 'extension a una mano', 'single arm pushdown'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Tríceps Braquial',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Agarre directo al mosquetón o con D-handle sin barra, alineando muñeca, codo y cable.',
+  },
+  {
+    id: 'hyp_overhead_cable_triceps',
+    name: 'Extensión de Tríceps Tras Nuca en Polea con Cuerda',
+    aliases: ['extension tras nuca polea', 'overhead cable extension', 'triceps cabeza larga polea'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Tríceps (Cabeza Larga)',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Hombros en flexión elevada; estira profundamente la cabeza larga detrás de la cabeza.',
+  },
+  {
+    id: 'hyp_dip_machine_triceps',
+    name: 'Fondos en Máquina Sentado (Tríceps)',
+    aliases: ['maquina de fondos', 'fondos en maquina', 'dip machine', 'seated dip'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Tríceps Braquial',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Torso erguido, codos pegados al cuerpo y empuja sin encoger los hombros.',
+  },
+  {
+    id: 'hyp_cable_kickback',
+    name: 'Patada de Tríceps en Polea Baja',
+    aliases: ['patada de triceps', 'tricep kickback', 'patada de burro triceps'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Tríceps (Cabeza Larga)',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Brazo fijo paralelo al suelo; el perfil de resistencia en polea mantiene máxima tensión en acortamiento.',
+  },
+  {
+    id: 'hyp_close_grip_bench_hyp',
+    name: 'Press de Banca Agarre Cerrado (Hipertrofia)',
+    aliases: ['press cerrado', 'banca cerrada triceps', 'close grip bench press'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Tríceps y Pectoral',
+    defaultRestSeconds: 120,
+    biomechanicalCue: 'Manos separadas al ancho de los hombros (no juntas); codos rozando los costados al bajar.',
+  },
+  // --- Core / Abdomen Expandido ---
+  {
+    id: 'hyp_hanging_leg_raise',
+    name: 'Elevaciones de Piernas Colgado en Barra',
+    aliases: ['elevaciones de piernas', 'abdominales colgado', 'hanging leg raise', 'toes to bar'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Recto Abdominal Inferior',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Enrosca la pelvis hacia arriba (retroversión pélvica) en lugar de solo flexionar la cadera.',
+  },
+  {
+    id: 'hyp_ab_wheel_rollout',
+    name: 'Rueda Abdominal (Ab Wheel Rollout)',
+    aliases: ['rueda abdominal', 'ab wheel', 'rollout'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Core / Recto Abdominal',
+    defaultRestSeconds: 90,
+    biomechanicalCue: 'Mantén retroversión pélvica y abdominales en máxima tensión anti-extensión lumbar.',
+  },
+  {
+    id: 'hyp_woodchopper_cable',
+    name: 'Leñadores / Rotación de Tronco en Polea (Woodchopper)',
+    aliases: ['woodchopper', 'lenadores polea', 'oblicuos en polea', 'pallof press'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Oblicuos y Core',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Rota desde la caja torácica manteniendo cadera estable y brazos semi-extendidos.',
+  },
+  {
+    id: 'hyp_ab_crunch_machine',
+    name: 'Crunch Abdominal en Máquina',
+    aliases: ['maquina de abdominales', 'ab crunch machine', 'crunch sentado maquina'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Recto Abdominal',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Flexiona la columna dorsal hacia el ombligo, exhalando al contraer.',
+  },
+  {
+    id: 'hyp_decline_situp',
+    name: 'Crunch Abdominal en Banco Declinado con Disco',
+    aliases: ['abdominales declinado', 'decline crunch', 'sit ups con peso'],
+    mode: 'hypertrophy',
+    muscleGroup: 'Recto Abdominal',
+    defaultRestSeconds: 75,
+    biomechanicalCue: 'Controla el descenso vértebra por vértebra sosteniendo el disco sobre el pecho o tras la nuca.',
+  },
 
   // ===================== FUERZA (POWERLIFTING / STRENGTH) =====================
   {
@@ -592,6 +1265,60 @@ export const BUILTIN_EXERCISES: ExerciseCatalogItem[] = [
     muscleGroup: 'Espalda Alta',
     defaultRestSeconds: 180,
     biomechanicalCue: 'Tracción explosiva hacia el abdomen.',
+  },
+  {
+    id: 'str_safety_bar_squat',
+    name: 'Sentadilla con Safety Squat Bar (SSB)',
+    aliases: ['ssb squat', 'safety bar squat', 'sentadilla barra seguridad'],
+    mode: 'strength',
+    muscleGroup: 'Cuádriceps / Cadena Posterior',
+    defaultRestSeconds: 240,
+    biomechanicalCue: 'Empuja hacia arriba contra el acolchado cervical sin colapsar la espalda alta.',
+  },
+  {
+    id: 'str_pin_squat',
+    name: 'Pin Squat (Sentadilla desde Pines)',
+    aliases: ['pin squat', 'sentadilla en pines'],
+    mode: 'strength',
+    muscleGroup: 'Cuádriceps / Glúteos',
+    defaultRestSeconds: 240,
+    biomechanicalCue: 'Asienta la barra muerta en los pines por 1s manteniendo tensión en core y arranca explosivo.',
+  },
+  {
+    id: 'str_deficit_deadlift',
+    name: 'Peso Muerto con Déficit',
+    aliases: ['deficit deadlift', 'peso muerto deficit'],
+    mode: 'strength',
+    muscleGroup: 'Cadena Posterior',
+    defaultRestSeconds: 240,
+    biomechanicalCue: 'Desde plataforma de 3-5cm, maximiza el empuje de piernas en la salida del suelo.',
+  },
+  {
+    id: 'str_board_press',
+    name: 'Floor Press / Board Press con Barra',
+    aliases: ['floor press', 'press en suelo', 'board press'],
+    mode: 'strength',
+    muscleGroup: 'Pectoral y Tríceps',
+    defaultRestSeconds: 210,
+    biomechanicalCue: 'Pausa breve con tríceps tocando el suelo para desarrollar fuerza máxima de bloqueo.',
+  },
+  {
+    id: 'str_smith_bench_heavy',
+    name: 'Press de Banca Pesado en Multipower (Smith)',
+    aliases: ['press fuerza smith', 'banca pesada multipower'],
+    mode: 'strength',
+    muscleGroup: 'Pectoral y Tríceps',
+    defaultRestSeconds: 180,
+    biomechanicalCue: 'Trayectoria estrictamente vertical guiada con pausa en pecho para fuerza sin desequilibrio.',
+  },
+  {
+    id: 'str_z_press',
+    name: 'Z-Press con Barra (Sentado en el Suelo)',
+    aliases: ['z press', 'press z barra'],
+    mode: 'strength',
+    muscleGroup: 'Deltoides y Core',
+    defaultRestSeconds: 180,
+    biomechanicalCue: 'Piernas extendidas en V sobre el suelo; cero impulso de piernas, pura fuerza estricta de empuje.',
   },
 
   // ===================== CALISTENIA =====================
@@ -852,7 +1579,7 @@ export const BUILTIN_EXERCISES: ExerciseCatalogItem[] = [
   {
     id: 'crd_jr_double_unders',
     name: 'Salto de Cuerda Double Unders',
-    aliases: ['saltos dobles', 'du', 'comba doble', 'salto de cuerda (double unders / dobles)', 'dobles cuerda'],
+    aliases: ['saltos dobles', 'double unders', 'comba doble', 'salto de cuerda (double unders / dobles)', 'dobles cuerda'],
     mode: 'cardio',
     cardioDiscipline: 'jumprope',
     muscleGroup: 'Potencia Elástica Aquiles',
@@ -1024,6 +1751,40 @@ export interface SmartSearchMatch {
  * - Prioritizes the active block's mode, while also surfacing strong matches from other modes so no exercise
  *   like "Press Militar" or "Dominadas" is ever hidden from the user.
  */
+const SEARCH_STOPWORDS = new Set([
+  'de',
+  'del',
+  'la',
+  'las',
+  'el',
+  'los',
+  'en',
+  'con',
+  'sin',
+  'por',
+  'para',
+  'al',
+  'un',
+  'una',
+  'y',
+  'o',
+]);
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasWordMatch(haystackNorm: string, needleNorm: string): boolean {
+  if (!needleNorm) return false;
+  return new RegExp(`(?:^|\\s)${escapeRegExp(needleNorm)}(?:\\s|$)`).test(haystackNorm);
+}
+
+/**
+ * Smart semantic + fuzzy search across the full catalog.
+ * - Filters Spanish stopwords ("de", "en", "con") so irrelevant prepositions never inflate scores.
+ * - Enforces word-boundary checks for short aliases so substrings like "du" never hijack "aductor".
+ * - Penalizes cross-mode matches so hypertrophy searches prioritize hypertrophy exercises.
+ */
 export function smartSearchExercises(
   catalog: ExerciseCatalogItem[],
   activeMode: TrainingMode,
@@ -1032,7 +1793,10 @@ export function smartSearchExercises(
 ): SmartSearchMatch[] {
   const qNorm = normalizeSearchText(rawQuery);
   const qCompact = qNorm.replace(/\s+/g, '');
-  const qTokens = qNorm ? qNorm.split(' ').filter((t) => t.length >= 2) : [];
+  const qWordsAll = qNorm ? qNorm.split(' ').filter(Boolean) : [];
+  const qTokens = qWordsAll.filter((t) => t.length >= 2 && !SEARCH_STOPWORDS.has(t));
+  const effectiveTokens = qTokens.length > 0 ? qTokens : qWordsAll.filter((t) => t.length >= 2);
+  const qWordSet = new Set(qWordsAll);
 
   // Default browsing when query is empty: show active mode exercises cleanly
   if (!qNorm) {
@@ -1058,6 +1822,9 @@ export function smartSearchExercises(
     const nameNorm = normalizeSearchText(item.name);
     const nameCompact = nameNorm.replace(/\s+/g, '');
     const muscleNorm = normalizeSearchText(item.muscleGroup);
+    const nameWords = nameNorm.split(' ').filter(Boolean);
+    const muscleWords = muscleNorm.split(' ').filter(Boolean);
+    const combinedWords = [...nameWords, ...muscleWords];
 
     let bestScore = 0;
     let matchedAlias: string | undefined;
@@ -1067,37 +1834,43 @@ export function smartSearchExercises(
       bestScore = 120;
     } else if (nameNorm.startsWith(qNorm)) {
       bestScore = 105;
-    } else if (nameNorm.includes(qNorm) || nameCompact.includes(qCompact)) {
+    } else if (qCompact.length >= 4 && (nameNorm.includes(qNorm) || nameCompact.includes(qCompact))) {
       bestScore = 92;
     }
 
-    // 2. Token coverage on name + muscle
-    if (qTokens.length > 0) {
-      const combined = `${nameNorm} ${muscleNorm}`;
-      const matchedCount = qTokens.filter((tok) => combined.includes(tok)).length;
-      if (matchedCount === qTokens.length) {
-        bestScore = Math.max(bestScore, 86);
+    // 2. Token coverage on name + muscle using whole-word or prefix match (never arbitrary middle substrings)
+    if (effectiveTokens.length > 0) {
+      const matchedCount = effectiveTokens.filter((tok) =>
+        combinedWords.some((w) => w === tok || w.startsWith(tok) || (tok.length >= 4 && w.includes(tok)))
+      ).length;
+      if (matchedCount === effectiveTokens.length) {
+        bestScore = Math.max(bestScore, 88);
       } else if (matchedCount > 0) {
-        bestScore = Math.max(bestScore, (matchedCount / qTokens.length) * 62);
+        bestScore = Math.max(bestScore, (matchedCount / effectiveTokens.length) * 62);
       }
     }
 
-    // 3. Alias / Synonym matching (e.g. "rompe cabezas" -> "rompecabezas" -> Press Francés)
+    // 3. Alias / Synonym matching (word-boundary safe so short codes cannot match inside unrelated words)
     if (item.aliases?.length) {
       for (const alias of item.aliases) {
         const aNorm = normalizeSearchText(alias);
         const aCompact = aNorm.replace(/\s+/g, '');
+        const aWords = aNorm.split(' ').filter((w) => !SEARCH_STOPWORDS.has(w) && w.length >= 2);
 
         let aliasScore = 0;
         if (aNorm === qNorm || aCompact === qCompact) {
           aliasScore = 115;
-        } else if (aNorm.includes(qNorm) || qNorm.includes(aNorm) || aCompact.includes(qCompact)) {
+        } else if (qCompact.length >= 4 && (aNorm.includes(qNorm) || aCompact.includes(qCompact))) {
           aliasScore = 96;
-        } else if (qTokens.length > 0 && qTokens.every((t) => aNorm.includes(t))) {
+        } else if (aNorm.length >= 4 && hasWordMatch(qNorm, aNorm)) {
+          aliasScore = 94;
+        } else if (effectiveTokens.length > 0 && aWords.length > 0 && effectiveTokens.every((t) => aWords.some((aw) => aw === t || aw.startsWith(t)))) {
           aliasScore = 90;
-        } else {
+        } else if (aNorm.length >= 2 && aNorm.length <= 3 && qWordSet.has(aNorm)) {
+          aliasScore = 88;
+        } else if (qCompact.length >= 5 && aCompact.length >= 5) {
           const sim = diceSimilarity(qCompact, aCompact);
-          if (sim >= 0.68) {
+          if (sim >= 0.72) {
             aliasScore = Math.round(sim * 95);
           }
         }
@@ -1114,15 +1887,19 @@ export function smartSearchExercises(
     // 4. Fuzzy typo tolerance against exercise name
     if (bestScore < 70 && qCompact.length >= 4) {
       const nameSim = diceSimilarity(qCompact, nameCompact);
-      if (nameSim >= 0.62) {
+      if (nameSim >= 0.65) {
         bestScore = Math.max(bestScore, Math.round(nameSim * 88));
       }
-      // Also check individual words in name for typo tolerance
-      for (const word of nameNorm.split(' ')) {
+      // Also check individual meaningful tokens against words in name for typo tolerance
+      for (const word of nameWords) {
         if (word.length >= 4) {
-          const wSim = diceSimilarity(qCompact, word);
-          if (wSim >= 0.74) {
-            bestScore = Math.max(bestScore, Math.round(wSim * 85));
+          for (const tok of effectiveTokens) {
+            if (tok.length >= 4) {
+              const wSim = diceSimilarity(tok, word);
+              if (wSim >= 0.78) {
+                bestScore = Math.max(bestScore, Math.round(wSim * 84));
+              }
+            }
           }
         }
       }
@@ -1135,9 +1912,11 @@ export function smartSearchExercises(
         finalScore += 25;
       } else if (isSameMode) {
         finalScore += 12;
-      } else if (bestScore < 78) {
-        // Only surface cross-mode results when they are strong matches
+      } else if (bestScore < 82) {
+        // Only surface cross-mode results when they are genuinely strong matches
         continue;
+      } else {
+        finalScore -= 15;
       }
 
       scored.push({

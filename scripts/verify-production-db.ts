@@ -391,6 +391,45 @@ async function runProductionSuite() {
   }
   console.log(`✅ 13. Motor de Variantes de Agarre (${jalonProno.gripVariant} vs ${jalonSupino.gripVariant}) y Fatiga Multi-Disciplina verificados.`);
 
+  // Test 14: Regresión de Reconocimiento Biomecánico, Implementos y Búsqueda Inteligente
+  const curlFemoralProfile = synthesizeExerciseDeepProfile('Curl Femoral Sentado', 'hypertrophy');
+  if (curlFemoralProfile.equipmentType !== 'Máquina') {
+    throw new Error(
+      `FALLO: Curl Femoral Sentado clasificó equipo como "${curlFemoralProfile.equipmentType}" en lugar de "Máquina".`
+    );
+  }
+
+  const smithSquatRes = resolveExerciseIntelligently('Sentadilla en Smith', 'hypertrophy');
+  if (
+    !smithSquatRes.canonicalName.toLowerCase().includes('smith') ||
+    smithSquatRes.deepProfile.equipmentType !== 'Multipower / Smith'
+  ) {
+    throw new Error(
+      `FALLO: "Sentadilla en Smith" resolvió incorrectamente a "${smithSquatRes.canonicalName}" (${smithSquatRes.deepProfile.equipmentType}).`
+    );
+  }
+
+  const adductorRes = resolveExerciseIntelligently('Aductor de cadera', 'hypertrophy');
+  if (adductorRes.mode !== 'hypertrophy' || !adductorRes.canonicalName.toLowerCase().includes('aductor')) {
+    throw new Error(
+      `FALLO: "Aductor de cadera" resolvió incorrectamente a "${adductorRes.canonicalName}" (${adductorRes.mode}).`
+    );
+  }
+
+  const customSmithPressRes = resolveExerciseIntelligently('Prensa Unilateral en Smith', 'hypertrophy');
+  if (
+    customSmithPressRes.isCanonicalMatch &&
+    !customSmithPressRes.canonicalName.toLowerCase().includes('smith')
+  ) {
+    throw new Error(
+      `FALLO: "Prensa Unilateral en Smith" devolvió isCanonicalMatch falso con "${customSmithPressRes.canonicalName}".`
+    );
+  }
+
+  console.log(
+    `✅ 14. Clasificación de Equipos (${curlFemoralProfile.equipmentType}), Smith (${smithSquatRes.canonicalName}), Aductor (${adductorRes.canonicalName}) y preservación custom verificados.`
+  );
+
   console.log('--- TODOS LOS TESTS DE PRODUCCIÓN Y PERSISTENCIA PASARON CON ÉXITO (100%) ---');
 }
 

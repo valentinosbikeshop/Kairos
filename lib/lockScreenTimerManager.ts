@@ -1,4 +1,3 @@
-import { formatMmSs } from '@/lib/formatters';
 import { kairosAudio } from '@/lib/audioEngine';
 
 let backgroundWorker: Worker | null = null;
@@ -149,10 +148,11 @@ export function stopBackgroundWorkerClock(): void {
 }
 
 /**
- * Actualiza el Widget de Pantalla de Bloqueo (Media Session API).
- * Diseñado pasivamente para no competir con el widget de Spotify o Apple Music.
+ * Mantiene limpia la MediaSession del sistema para que KAIROS JAMÁS secuestre
+ * ni reemplace al reproductor de Spotify / Apple Music en la Pantalla de Bloqueo
+ * ni en la Isla Dinámica de iOS.
  */
-export function updateLockScreenMediaSession(params: {
+export function updateLockScreenMediaSession(_params: {
   title: string;
   subtitle: string;
   durationSeconds: number;
@@ -162,42 +162,17 @@ export function updateLockScreenMediaSession(params: {
   onSkip?: () => void;
   onAddSeconds?: (sec: number) => void;
 }): void {
-  if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-
-  try {
-    const elapsed = Math.max(0, params.durationSeconds - params.remainingSeconds);
-    const timeFormatted = formatMmSs(params.remainingSeconds);
-
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: `⏱️ ${timeFormatted} · ${params.title}`,
-      artist: 'KAIROS Pro Timer',
-      album: params.subtitle || 'Santuario de Entrenamiento',
-      artwork: [
-        { src: '/icon', sizes: '192x192', type: 'image/png' },
-        { src: '/apple-icon', sizes: '512x512', type: 'image/png' },
-      ],
-    });
-
-    if ('setPositionState' in navigator.mediaSession && params.durationSeconds > 0) {
-      try {
-        navigator.mediaSession.setPositionState({
-          duration: Math.max(1, params.durationSeconds),
-          playbackRate: params.isRunning ? 1 : 0,
-          position: Math.min(params.durationSeconds, Math.max(0, elapsed)),
-        });
-      } catch {
-        // Ignore setPositionState boundary errors
-      }
-    }
-  } catch {
-    // Ignore mediaSession exceptions
-  }
+  // No-op intencional: escribir en navigator.mediaSession.metadata provoca que iOS/Android
+  // muestren KAIROS como una canción activa y pausen Spotify / Apple Music.
+  clearLockScreenMediaSession();
 }
 
 export function clearLockScreenMediaSession(): void {
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
   try {
-    navigator.mediaSession.metadata = null;
+    if (navigator.mediaSession.metadata !== null) {
+      navigator.mediaSession.metadata = null;
+    }
   } catch {
     // Ignore
   }

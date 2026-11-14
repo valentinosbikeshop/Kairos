@@ -308,8 +308,9 @@ export function AudioMixerPanel() {
           )}
         </div>
         <p className="text-[11px] text-brand-muted leading-relaxed">
-          KAIROS cuenta con bypass acústico para sonar con claridad incluso si tu celular tiene
-          activado el modo silencio o el interruptor físico en silencio, sin pausar tu música en segundo plano.
+          KAIROS utiliza síntesis acústica en canal ambiental (<code className="text-brand/80">ambient</code>)
+          para sonar claramente por encima de Spotify o Apple Music sin pausar jamás tu música ni
+          ocupar el reproductor de tu pantalla de bloqueo.
         </p>
       </div>
     </div>

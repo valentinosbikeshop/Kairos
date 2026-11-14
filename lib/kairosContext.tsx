@@ -34,11 +34,13 @@ import {
   BUILTIN_EXERCISES,
   cloneSetsFromGhost,
   getLastExerciseGhost,
+  normalizeSearchText,
 } from '@/lib/exerciseDatabase';
 import {
   cleanActiveWorkoutExercises,
   cleanAllRoutineExercises,
   cleanWorkoutSessionExercises,
+  formatCapitalizedExercise,
   resolveExerciseIntelligently,
   sanitizeExerciseName,
   synthesizeExerciseDeepProfile,
@@ -1291,20 +1293,27 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       if (!cleanName) return;
 
       const resolved = resolveExerciseIntelligently(cleanName, mode);
+      const formattedCustomName = formatCapitalizedExercise(
+        sanitizeExerciseName(cleanName) || cleanName
+      );
+      const slug = normalizeSearchText(formattedCustomName).replace(/[^a-z0-9]+/g, '_');
+      const customId = `custom_cx_${slug || Date.now()}`;
+      const customProfile = synthesizeExerciseDeepProfile(formattedCustomName, mode);
 
       const customItem: ExerciseCatalogItem = {
-        id: resolved.canonicalCatalogId,
-        name: resolved.canonicalName,
-        mode: resolved.mode || mode,
-        muscleGroup: options?.muscleGroup || resolved.muscleGroup,
+        id: customId,
+        name: formattedCustomName,
+        mode,
+        muscleGroup:
+          customProfile.primaryMuscles[0] || options?.muscleGroup || resolved.muscleGroup,
         defaultRestSeconds: resolved.defaultRestSeconds || MODE_META[mode].defaultRest,
-        biomechanicalCue: resolved.biomechanicalCue,
-        deepProfile: resolved.deepProfile,
+        biomechanicalCue: customProfile.biomechanicalCue || resolved.biomechanicalCue,
+        deepProfile: customProfile,
         calisthenicsSubType:
           mode === 'calisthenics' ? options?.calisthenicsSubType ?? 'dynamic' : undefined,
         cardioDiscipline:
           mode === 'cardio' ? options?.cardioDiscipline ?? 'jumprope' : undefined,
-        isCustom: !resolved.isCanonicalMatch,
+        isCustom: true,
       };
 
       setCustomExercises((prev) => [
@@ -1313,14 +1322,8 @@ export function KairosProvider({ children }: { children: React.ReactNode }) {
       ]);
       addExerciseToBlock(blockId, customItem);
 
-      // If not in BUILTIN_EXERCISES, automatically launch deep recognition & research pipeline
-      if (!resolved.isCanonicalMatch) {
-        void researchCustomExercise(
-          resolved.canonicalName,
-          resolved.mode || mode,
-          resolved.canonicalCatalogId
-        );
-      }
+      // Launch deep AI biomechanics verification in background for the custom exercise
+      void researchCustomExercise(formattedCustomName, mode, customId);
     },
     [addExerciseToBlock, researchCustomExercise]
   );

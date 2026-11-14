@@ -601,15 +601,42 @@ export function synthesizeExerciseDeepProfile(
     return applyGripAndVariantModifiers(catalogItem.deepProfile, rawName, mode, effectiveGrip);
   }
 
-  // 1. Determine Equipment Type
+  // 1. Determine Equipment Type (order matters: specific machines/smith/cables/EZ bar before generic barbell)
   let equipmentType: ExerciseDeepProfile['equipmentType'] = 'Barra';
-  if (/\b(?:poleas?|cables?|cruces?|bayesian[oa]?|katana|face\s*pull|jal[oó]n|pushdown)\b/i.test(clean)) {
-    equipmentType = 'Polea / Cable';
-  } else if (/\b(?:multipower|smith)\b/i.test(clean)) {
+  if (/\b(?:multipower|smith)\b/i.test(clean)) {
     equipmentType = 'Multipower / Smith';
-  } else if (/\b(?:m[aá]quinas?|pec\s*deck|contractora|prensa|hack|hacka|sill[oó]n|camilla|p[eé]ndulo|abductor|aductor)\b/i.test(clean)) {
+  } else if (
+    /\b(?:barra\s*t|t[\s-]*bar|landmine|en\s*punta)\b/i.test(clean)
+  ) {
+    equipmentType = 'Barra T / Discos';
+  } else if (
+    /\b(?:m[aá]quinas?|convergente|pec\s*deck|contractora|prensa|hack|hacka|sill[oó]n|camilla|p[eé]ndulo|pendulum|abductor|aductor|glute\s*drive|glute\s*builder|belt\s*squat|reverse\s*hyper|curl\s*femoral|leg\s*curl|femoral\s*(?:sentad[oa]|tumbad[oa]|acostad[oa]|de\s*pie)|leg\s*extension|extensi[oó]n\s*de\s*cu[aá]driceps|elevaci[oó]n\s*de\s*talones\s*(?:sentado|en\s*m[aá]quina|en\s*prensa)|calf\s*raise|machine)\b/i.test(
+      clean
+    ) &&
+    !/\b(?:mancuernas?|c\/manc|barra\s+libre|con\s+barra)\b/i.test(clean)
+  ) {
     equipmentType = 'Máquina';
-  } else if (/\b(?:mancuernas?|c\/manc|arnold|martillo|hammer|concentrado|p[aá]jaros|serrucho|goblet|zottman)\b/i.test(clean)) {
+  } else if (
+    /\b(?:poleas?|cables?|cruces?|crossover|bayesian[oa]?|katana|face\s*pull|jal[oó]n|pushdown|woodchopper|le[ñn]adores|pulldown)\b/i.test(
+      clean
+    )
+  ) {
+    equipmentType = 'Polea / Cable';
+  } else if (
+    /\b(?:barra\s*[zw]|barra\s*ez|ez\s*bar|rompecabezas|skull\s*crusher|press\s*franc[eé]s|predicador)\b/i.test(
+      clean
+    ) &&
+    !/\b(?:mancuernas?|c\/manc|poleas?)\b/i.test(clean)
+  ) {
+    equipmentType = 'Barra Z (Angulada)';
+  } else if (
+    /\b(?:mancuernas?|c\/manc|dumbbell|arnold|martillo|concentrado|p[aá]jaros|serrucho|goblet|zottman|copa)\b/i.test(
+      clean
+    ) &&
+    !/\b(?:barra|multipower|smith|poleas?|m[aá]quinas?)\b/i.test(clean)
+  ) {
+    equipmentType = 'Mancuernas';
+  } else if (/\b(?:b[uú]lgara|zancadas?)\b/i.test(clean) && !/\b(?:barra|smith|multipower)\b/i.test(clean)) {
     equipmentType = 'Mancuernas';
   } else if (/\b(?:kettlebells?|pesa\s*rusa|saco|sandbag|trineo|sled|wall\s*balls?|farmers|granjero)\b/i.test(clean)) {
     equipmentType = 'Kettlebell / Libre';
@@ -617,7 +644,9 @@ export function synthesizeExerciseDeepProfile(
     equipmentType = 'Ergo / Cardio';
   } else if (
     mode === 'calisthenics' ||
-    /\b(?:dominadas?|fondos?|flexiones|push\s*ups?|front\s*lever|back\s*lever|planche|handstand|pino|muscle\s*up|pistol|l-sit|dragon\s*flag|plancha|plank|n[oó]rdic[oa]?|burpees?)\b/i.test(clean)
+    /\b(?:dominadas?|fondos?|flexiones|push\s*ups?|front\s*lever|back\s*lever|planche|handstand|pino|muscle\s*up|pistol|l-sit|dragon\s*flag|plancha|plank|n[oó]rdic[oa]?|burpees?|sissy|rueda\s*abdominal|ab\s*wheel|elevaciones\s*de\s*piernas|tibial)\b/i.test(
+      clean
+    )
   ) {
     equipmentType = 'Peso Corporal';
   }
@@ -1227,6 +1256,12 @@ const MUSCLE_KEYWORDS: {
     muscleGroup: 'Glúteos',
     pattern: 'Dominante de Cadera',
   },
+  // Aductores
+  {
+    regex: /\b(?:aductor(?:es)?|aducci[oó]n)\b/i,
+    muscleGroup: 'Aductores (Mayor, Largo y Corto)',
+    pattern: 'Dominante de Cadera',
+  },
   // Gemelos / Pantorrillas
   {
     regex: /\b(?:gemelos?|pantorrilla[s]?|calf|elevacion\s*talones|soleo|tibial)\b/i,
@@ -1257,16 +1292,27 @@ const MUSCLE_KEYWORDS: {
  * Checks if user specified an explicit equipment that contradicts the catalog item.
  * E.g., user said "con mancuernas" but catalog item is "con Barra".
  */
+/**
+ * Checks if user specified an explicit equipment or mutually exclusive movement variant
+ * that contradicts the catalog item.
+ * E.g., user said "Sentadilla en Smith" vs catalog item "Sentadilla Hack Profunda",
+ * or user said "Aductor" vs "Abductor".
+ */
 function hasConflictingEquipment(userText: string, catalogItemName: string): boolean {
-  const normUser = userText.toLowerCase();
-  const normItem = catalogItemName.toLowerCase();
+  const normUser = normalizeSearchText(userText);
+  const normItem = normalizeSearchText(catalogItemName);
 
   const eqCategories = [
     { key: 'mancuerna', match: /\b(?:mancuernas?|c\/manc|dumbbell)\b/ },
-    { key: 'barra', match: /\b(?:barra|c\/barra|barbell)\b/ },
-    { key: 'polea', match: /\b(?:poleas?|cable)\b/ },
-    { key: 'maquina', match: /\b(?:m[aá]quinas?|hammer|guiada)\b/ },
+    { key: 'barra', match: /\b(?:barra\s+libre|con\s+barra|c\/barra|barbell)\b/ },
+    { key: 'barra_z', match: /\b(?:barra\s*[zw]|barra\s*ez|ez\s*bar)\b/ },
+    { key: 'polea', match: /\b(?:poleas?|cables?)\b/ },
     { key: 'smith', match: /\b(?:multipower|smith)\b/ },
+    { key: 'hack', match: /\b(?:hack|hacka)\b/ },
+    { key: 'pendulo', match: /\b(?:pendulo|pendulum)\b/ },
+    { key: 'prensa', match: /\b(?:prensa|leg\s*press)\b/ },
+    { key: 'sissy', match: /\b(?:sissy)\b/ },
+    { key: 'goblet', match: /\b(?:goblet|copa)\b/ },
   ];
 
   for (const cat of eqCategories) {
@@ -1278,6 +1324,31 @@ function hasConflictingEquipment(userText: string, catalogItemName: string): boo
       }
     }
   }
+
+  // Generic "maquina" vs free weights/smith/cable when both explicitly differ
+  if (
+    /\bmaquinas?\b/.test(normUser) &&
+    (/\b(?:mancuernas?|c\/manc|barra\s+libre|con\s+barra|multipower|smith)\b/.test(normItem) &&
+      !/\bmaquinas?\b/.test(normItem))
+  ) {
+    return true;
+  }
+
+  // Mutually exclusive anatomical/posture pairs
+  const exclusivePairs: Array<[RegExp, RegExp]> = [
+    [/\baductor(?:es)?\b/, /\babductor(?:es)?\b/],
+    [/\bsentad[oa]s?\b/, /\b(?:tumbad[oa]s?|acostad[oa]s?|de\s+pie)\b/],
+    [/\b(?:tumbad[oa]s?|acostad[oa]s?)\b/, /\b(?:sentad[oa]s?|de\s+pie)\b/],
+    [/\binclinad[oa]s?\b/, /\b(?:declinad[oa]s?|plan[oa]s?)\b/],
+    [/\bdeclinad[oa]s?\b/, /\b(?:inclinad[oa]s?|plan[oa]s?)\b/],
+  ];
+
+  for (const [a, b] of exclusivePairs) {
+    if ((a.test(normUser) && b.test(normItem) && !a.test(normItem)) || (b.test(normUser) && a.test(normItem) && !b.test(normItem))) {
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -1491,7 +1562,7 @@ export function resolveExerciseIntelligently(
     const hits = smartSearchExercises(catalogPool, m, clean);
     if (hits.length > 0) {
       const top = hits[0];
-      const rawScore = top.isCrossMode ? top.score : top.score - 20; // balance cross-mode bonus
+      const rawScore = top.isCrossMode ? top.score - 15 : top.score;
       if (!bestMatch || rawScore > bestMatch.score) {
         bestMatch = {
           item: top.item,
@@ -1503,19 +1574,17 @@ export function resolveExerciseIntelligently(
   }
 
   // 2. High confidence catalog match (exact match, close synonym or alias)
-  if (bestMatch && bestMatch.score >= 88) {
+  if (bestMatch && bestMatch.score >= 88 && !hasConflictingEquipment(clean, bestMatch.item.name)) {
     const item = bestMatch.item;
-    const hasConflict = hasConflictingEquipment(clean, item.name);
-    const finalCanonicalName = hasConflict ? formatCapitalizedExercise(clean) : item.name;
     const deepProfile =
-      item.deepProfile || synthesizeExerciseDeepProfile(finalCanonicalName, item.mode, item.id);
+      item.deepProfile || synthesizeExerciseDeepProfile(item.name, item.mode, item.id);
 
     return {
       rawInput,
       cleanName: clean,
       canonicalCatalogId: item.id,
-      canonicalName: finalCanonicalName,
-      isCanonicalMatch: !hasConflict,
+      canonicalName: item.name,
+      isCanonicalMatch: true,
       confidence: Math.min(100, bestMatch.score),
       muscleGroup: item.muscleGroup,
       mode: item.mode,
@@ -1534,8 +1603,8 @@ export function resolveExerciseIntelligently(
     };
   }
 
-  // 3. Fallback: Strip equipment modifiers ONLY to find parent muscle group and biomechanical cues
-  // NEVER overwrite user's clean equipment variant with opposite equipment
+  // 3. Fallback: Strip equipment modifiers ONLY to infer muscle group & rest defaults
+  // NEVER overwrite user's exercise name or pretend it is a canonical catalog match when equipment differs
   let strippedCore = clean;
   for (const em of EQUIPMENT_MODIFIERS) {
     strippedCore = strippedCore.replace(em, ' ');
@@ -1545,28 +1614,23 @@ export function resolveExerciseIntelligently(
   if (strippedCore.length >= 4 && strippedCore !== clean) {
     for (const m of Array.from(new Set(allModes))) {
       const hits = smartSearchExercises(catalogPool, m, strippedCore);
-      if (hits.length > 0 && hits[0].score >= 86) {
+      if (hits.length > 0 && hits[0].score >= 88 && !hasConflictingEquipment(clean, hits[0].item.name)) {
         const item = hits[0].item;
         const formattedUserClean = formatCapitalizedExercise(clean);
-        const finalName = hasConflictingEquipment(clean, item.name)
-          ? formattedUserClean
-          : item.name;
-        const deepProfile =
-          item.deepProfile || synthesizeExerciseDeepProfile(finalName, item.mode, item.id);
+        const deepProfile = synthesizeExerciseDeepProfile(formattedUserClean, item.mode);
 
         return {
           rawInput,
           cleanName: clean,
-          canonicalCatalogId: item.id,
-          // Preserve user's equipment specification in canonical name if it differs
-          canonicalName: finalName,
-          isCanonicalMatch: true,
-          confidence: Math.min(95, hits[0].score),
+          canonicalCatalogId: `custom_${normalizeSearchText(formattedUserClean).replace(/[^a-z0-9]+/g, '_')}`,
+          canonicalName: formattedUserClean,
+          isCanonicalMatch: false,
+          confidence: Math.min(82, hits[0].score - 10),
           muscleGroup: item.muscleGroup,
           mode: item.mode,
           defaultRestSeconds: item.defaultRestSeconds,
           matchedAlias: hits[0].matchedAlias || strippedCore,
-          biomechanicalCue: item.biomechanicalCue || deepProfile.biomechanicalCue,
+          biomechanicalCue: deepProfile.biomechanicalCue || item.biomechanicalCue,
           movementPattern: deepProfile.movementPattern,
           deepProfile,
           outOfContextAnalysis,
@@ -1581,28 +1645,24 @@ export function resolveExerciseIntelligently(
     }
   }
 
-  // 4. Moderate match: keep user's exact wording but bind canonicalId for tracking
+  // 4. Moderate match: keep user's exact wording while borrowing biomechanical reference
   if (bestMatch && bestMatch.score >= 75) {
     const item = bestMatch.item;
     const formattedUserClean = formatCapitalizedExercise(clean);
-    const finalName = hasConflictingEquipment(clean, item.name)
-      ? formattedUserClean
-      : item.name;
-    const deepProfile =
-      item.deepProfile || synthesizeExerciseDeepProfile(finalName, item.mode, item.id);
+    const deepProfile = synthesizeExerciseDeepProfile(formattedUserClean, item.mode);
 
     return {
       rawInput,
       cleanName: clean,
-      canonicalCatalogId: item.id,
-      canonicalName: finalName,
+      canonicalCatalogId: `custom_${normalizeSearchText(formattedUserClean).replace(/[^a-z0-9]+/g, '_')}`,
+      canonicalName: formattedUserClean,
       isCanonicalMatch: false,
       confidence: bestMatch.score,
       muscleGroup: item.muscleGroup,
       mode: item.mode,
       defaultRestSeconds: item.defaultRestSeconds,
       matchedAlias: bestMatch.matchedAlias,
-      biomechanicalCue: item.biomechanicalCue || deepProfile.biomechanicalCue,
+      biomechanicalCue: deepProfile.biomechanicalCue || item.biomechanicalCue,
       movementPattern: deepProfile.movementPattern,
       deepProfile,
       outOfContextAnalysis,
@@ -1752,7 +1812,7 @@ export function cleanAllRoutineExercises(days: RoutineDayPlan[]): RoutineExercis
 
       if (catalogId) {
         const cat = BUILTIN_EXERCISES.find((b) => b.id === catalogId);
-        if (cat) {
+        if (cat && !catalogId.startsWith('custom_')) {
           cleanName = cat.name;
         }
       } else {
@@ -1814,7 +1874,7 @@ export function cleanWorkoutSessionExercises(session: any): { session: any; modi
 
       if (catalogId) {
         const cat = BUILTIN_EXERCISES.find((b) => b.id === catalogId);
-        if (cat) {
+        if (cat && !catalogId.startsWith('custom_')) {
           cleanName = cat.name;
         }
       } else {
@@ -1856,7 +1916,7 @@ export function cleanActiveWorkoutExercises(activeWorkout: any): { activeWorkout
 
       if (catalogId) {
         const cat = BUILTIN_EXERCISES.find((b) => b.id === catalogId);
-        if (cat) {
+        if (cat && !catalogId.startsWith('custom_')) {
           cleanName = cat.name;
         }
       } else {

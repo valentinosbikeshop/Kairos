@@ -267,7 +267,7 @@ export function ExercisePickerModal({
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleCreateCustom(trimmedQuery, aiResolved.muscleGroup)}
+                      onClick={() => handleCreateCustom(trimmedQuery)}
                       className="flex-1 rounded-lg border border-stoneborder bg-background py-1.5 px-2 text-[11px] font-medium text-brand-muted hover:text-brand active:scale-95"
                     >
                       Crear &quot;{trimmedQuery}&quot;

@@ -422,23 +422,17 @@ export function PolymorphicExerciseCard({
               </select>
             )}
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-brand-muted mt-0.5 flex-wrap">
+          <div className="flex items-center gap-x-2 gap-y-0.5 text-[11px] text-brand-muted mt-0.5 flex-wrap">
             <span className="font-medium text-brand/85">
               {deepProfile.primaryMuscles[0] || exercise.muscleGroup}
             </span>
             {deepProfile.secondaryMuscles.length > 0 && (
-              <>
-                <span>·</span>
-                <span className="text-brand-muted">
-                  Sinergistas: {deepProfile.secondaryMuscles.slice(0, 2).join(', ')}
-                </span>
-              </>
+              <span className="text-brand-muted">
+                · Sinergistas: {deepProfile.secondaryMuscles.slice(0, 2).join(', ')}
+              </span>
             )}
             {ghost && (
-              <>
-                <span>·</span>
-                <span className="text-brand-muted">Anterior: {ghost.summaryLine}</span>
-              </>
+              <span className="text-brand-muted">· Anterior: {ghost.summaryLine}</span>
             )}
           </div>
           {deepProfile.variantAnalysisNote && (
@@ -516,6 +510,8 @@ export function PolymorphicExerciseCard({
         <HypertrophyRows
           sets={exercise.hypertrophySets ?? []}
           defaultRest={exercise.defaultRestSeconds}
+          equipmentType={deepProfile.equipmentType}
+          exerciseName={exercise.name}
           onChangeSets={(next) =>
             mutateExercise(blockId, exercise.id, (ex) => ({ ...ex, hypertrophySets: next }))
           }
@@ -529,6 +525,8 @@ export function PolymorphicExerciseCard({
           sets={exercise.strengthSets ?? []}
           referenceOneRmKg={exercise.referenceOneRmKg}
           defaultRest={exercise.defaultRestSeconds}
+          equipmentType={deepProfile.equipmentType}
+          exerciseName={exercise.name}
           onChangeRef1Rm={(val) =>
             mutateExercise(blockId, exercise.id, (ex) => ({ ...ex, referenceOneRmKg: val }))
           }
@@ -699,14 +697,14 @@ export function PolymorphicExerciseCard({
 // SUB-TABLES FOR EACH POLYMORPHIC TRAINING MODE (UNCLUTTERED GOTHIC PALETTE)
 // ============================================================================
 
-function calculateBarbellPlatesPerSide(totalKg: number): string | null {
-  if (!totalKg || totalKg < 25) return null;
-  let rem = Math.round(((totalKg - 20) / 2) * 100) / 100;
+function calculateBarbellPlatesPerSide(totalKg: number, barWeightKg = 20): string | null {
+  if (!totalKg || totalKg <= barWeightKg) return null;
+  let rem = Math.round(((totalKg - barWeightKg) / 2) * 100) / 100;
   if (rem <= 0) return null;
   const denominations = [25, 20, 15, 10, 5, 2.5, 1.25];
   const plates: number[] = [];
   for (const plate of denominations) {
-    while (rem >= plate - 0.01 && plates.length < 6) {
+    while (rem >= plate - 0.01 && plates.length < 12) {
       plates.push(plate);
       rem = Math.round((rem - plate) * 100) / 100;
     }
@@ -714,14 +712,89 @@ function calculateBarbellPlatesPerSide(totalKg: number): string | null {
   return plates.length > 0 ? plates.join('+') : null;
 }
 
+function getEquipmentLoadMeta(
+  totalKg: number,
+  equipmentType: string,
+  exerciseName: string
+): { label: string; title: string } | null {
+  if (!totalKg || totalKg <= 0) {
+    return equipmentType
+      ? { label: equipmentType, title: `Implemento: ${equipmentType}` }
+      : null;
+  }
+
+  if (equipmentType === 'Barra') {
+    const plates = calculateBarbellPlatesPerSide(totalKg, 20);
+    if (plates) {
+      return {
+        label: `Barra 20 + [${plates}]/lado`,
+        title: 'Discos por lado usando barra olímpica estándar de 20 kg',
+      };
+    }
+    return { label: 'Barra Libre', title: 'Barra olímpica libre' };
+  }
+
+  if (equipmentType === 'Barra Z (Angulada)') {
+    const plates = calculateBarbellPlatesPerSide(totalKg, 10);
+    if (plates) {
+      return {
+        label: `Barra Z 10 + [${plates}]/lado`,
+        title: 'Discos por lado usando barra Z estándar de 10 kg',
+      };
+    }
+    return { label: 'Barra Z', title: 'Barra Z angulada' };
+  }
+
+  if (equipmentType === 'Multipower / Smith') {
+    const plates = calculateBarbellPlatesPerSide(totalKg, 10);
+    if (plates) {
+      return {
+        label: `Smith (~10) + [${plates}]/lado`,
+        title: 'Discos por lado estimando carro guiado Multipower de ~10 kg',
+      };
+    }
+    return { label: 'Multipower / Smith', title: 'Máquina Multipower / Smith guiada' };
+  }
+
+  const isPlateLoaded =
+    equipmentType === 'Barra T / Discos' ||
+    (equipmentType === 'Máquina' &&
+      /\b(?:prensa\s*45|hack|hacka|p[eé]ndulo|pendulum|belt\s*squat|convergente|hammer|barra\s*t|t[\s-]*bar|landmine|en\s*punta|glute\s*(?:drive|builder)|hip\s*thrust\s*en\s*m[aá]quina)\b/i.test(
+        exerciseName
+      ));
+
+  if (isPlateLoaded) {
+    const plates = calculateBarbellPlatesPerSide(totalKg, 0);
+    if (plates) {
+      return {
+        label: `Discos [${plates}]/lado`,
+        title: 'Discos totales cargados por lado en máquina de carga libre / palanca',
+      };
+    }
+  }
+
+  if (equipmentType) {
+    return {
+      label: equipmentType,
+      title: `Implemento biomecánico: ${equipmentType} (sin barra olímpica)`,
+    };
+  }
+
+  return null;
+}
+
 function HypertrophyRows({
   sets,
   defaultRest,
+  equipmentType,
+  exerciseName,
   onChangeSets,
   onToggleComplete,
 }: {
   sets: HypertrophySet[];
   defaultRest: number;
+  equipmentType: string;
+  exerciseName: string;
   onChangeSets: (next: HypertrophySet[]) => void;
   onToggleComplete: (completed: boolean, restSec: number) => void;
 }) {
@@ -735,9 +808,9 @@ function HypertrophyRows({
     });
     return {
       bestE1rm: Math.round(bestE1rm * 10) / 10,
-      platesPerSide: calculateBarbellPlatesPerSide(maxWeight),
+      loadMeta: getEquipmentLoadMeta(maxWeight, equipmentType, exerciseName),
     };
-  }, [sets]);
+  }, [sets, equipmentType, exerciseName]);
 
   const addSet = () => {
     const last = sets[sets.length - 1];
@@ -884,12 +957,12 @@ function HypertrophyRows({
             <span className="rounded-md border border-gothic/25 bg-gothic/10 px-1.5 py-0.5 text-gothic">
               e1RM {topSetStats.bestE1rm} kg
             </span>
-            {topSetStats.platesPerSide && (
+            {topSetStats.loadMeta && (
               <span
-                title="Discos por lado usando barra olímpica de 20 kg"
+                title={topSetStats.loadMeta.title}
                 className="rounded-md border border-stoneborder bg-background/80 px-1.5 py-0.5 text-brand-muted"
               >
-                Barra 20 + [{topSetStats.platesPerSide}]/lado
+                {topSetStats.loadMeta.label}
               </span>
             )}
           </div>
@@ -913,6 +986,8 @@ function StrengthRows({
   sets,
   referenceOneRmKg,
   defaultRest,
+  equipmentType,
+  exerciseName,
   onChangeRef1Rm,
   onChangeSets,
   onToggleComplete,
@@ -920,6 +995,8 @@ function StrengthRows({
   sets: StrengthSet[];
   referenceOneRmKg?: number;
   defaultRest: number;
+  equipmentType: string;
+  exerciseName: string;
   onChangeRef1Rm: (val: number) => void;
   onChangeSets: (next: StrengthSet[]) => void;
   onToggleComplete: (completed: boolean, restSec: number) => void;
@@ -1089,16 +1166,18 @@ function StrengthRows({
               e1RM {Math.round(bestLiveE1rm * 10) / 10} kg
             </span>
             {sets.length > 0 &&
-              calculateBarbellPlatesPerSide(Math.max(...sets.map((x) => x.weightKg || 0))) && (
-                <span
-                  title="Discos por lado usando barra olímpica de 20 kg"
-                  className="rounded-md border border-stoneborder bg-background/80 px-1.5 py-0.5 text-brand-muted"
-                >
-                  Barra 20 + [
-                  {calculateBarbellPlatesPerSide(Math.max(...sets.map((x) => x.weightKg || 0)))}
-                  ]/lado
-                </span>
-              )}
+              (() => {
+                const maxKg = Math.max(...sets.map((x) => x.weightKg || 0));
+                const meta = getEquipmentLoadMeta(maxKg, equipmentType, exerciseName);
+                return meta ? (
+                  <span
+                    title={meta.title}
+                    className="rounded-md border border-stoneborder bg-background/80 px-1.5 py-0.5 text-brand-muted"
+                  >
+                    {meta.label}
+                  </span>
+                ) : null;
+              })()}
           </div>
         ) : (
           <span />

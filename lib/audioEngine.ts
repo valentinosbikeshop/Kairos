@@ -48,25 +48,20 @@ class KairosAudioEngine {
   private keepAliveSource: AudioBufferSourceNode | null = null;
   private keepAliveWanted = false;
   private healthListeners = new Set<(health: KairosAudioHealth) => void>();
-  private transientResetTimer: ReturnType<typeof setTimeout> | null = null;
-  private htmlAudioPool: HTMLAudioElement[] = [];
-  private poolIndex = 0;
-  private audioPoolPrimed = false;
-  private wavCache = new Map<string, string>();
 
   /**
-   * Configura la sesión de audio del navegador en 'playback' (Safari iOS 16.4+ / WebKit).
-   * En modo 'playback', el sistema operativo iOS reproduce el audio sin importar si el
-   * interruptor físico de silencio (silent switch / ringer switch) o el Modo Enfoque Silencio
-   * está activado en el dispositivo.
+   * Configura la sesión de audio del navegador en 'ambient' (Safari iOS 16.4+ / WebKit).
+   * En modo 'ambient', los pitidos de Web Audio API se mezclan directamente SOBRE
+   * Spotify / Apple Music sin pausar la música de fondo ni activar el reproductor
+   * de la pantalla de bloqueo / Isla Dinámica de iOS.
    */
-  public configurePlaybackSession(): void {
+  public configureAmbientSession(): void {
     if (typeof navigator === 'undefined') return;
     if ('audioSession' in navigator) {
       try {
         const nav = navigator as NavigatorWithAudioSession;
-        if (nav.audioSession && nav.audioSession.type !== 'playback') {
-          nav.audioSession.type = 'playback';
+        if (nav.audioSession && nav.audioSession.type !== 'ambient') {
+          nav.audioSession.type = 'ambient';
         }
       } catch {
         // Ignore on browsers where audioSession.type setter is restricted
@@ -74,255 +69,14 @@ class KairosAudioEngine {
     }
   }
 
-  public configureAmbientSession(): void {
-    this.configurePlaybackSession();
+  public configurePlaybackSession(): void {
+    // Mantenemos siempre sesión 'ambient' para que KAIROS jamás secuestre el foco
+    // multimedia ni pause Spotify / Apple Music al terminar una serie o iniciar el descanso.
+    this.configureAmbientSession();
   }
 
   private pulseTransientAudioSession(_durationMs: number): void {
-    this.configurePlaybackSession();
-  }
-
-  private buildWavDataUri(
-    tones: { freq: number; startSec: number; durSec: number; amp: number }[],
-    totalSec: number
-  ): string {
-    const key = `${this.settings.profile}_${Math.round(this.settings.gainPercent)}_${tones
-      .map((t) => `${t.freq}:${t.startSec}:${t.durSec}`)
-      .join('|')}`;
-    const cached = this.wavCache.get(key);
-    if (cached) return cached;
-
-    const sampleRate = 22050;
-    const numSamples = Math.max(1, Math.floor(sampleRate * totalSec));
-    const buffer = new ArrayBuffer(44 + numSamples * 2);
-    const view = new DataView(buffer);
-
-    const writeStr = (offset: number, str: string) => {
-      for (let i = 0; i < str.length; i++) {
-        view.setUint8(offset + i, str.charCodeAt(i));
-      }
-    };
-
-    writeStr(0, 'RIFF');
-    view.setUint32(4, 36 + numSamples * 2, true);
-    writeStr(8, 'WAVE');
-    writeStr(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeStr(36, 'data');
-    view.setUint32(40, numSamples * 2, true);
-
-    const linearGain = Math.min(2.0, this.percentToLinearGain(this.settings.gainPercent));
-
-    for (let i = 0; i < numSamples; i++) {
-      const t = i / sampleRate;
-      let sample = 0;
-      for (const tone of tones) {
-        if (t >= tone.startSec && t <= tone.startSec + tone.durSec) {
-          const localT = t - tone.startSec;
-          const attack = Math.min(1, localT / 0.006);
-          const decay = Math.exp((-3.5 * localT) / tone.durSec);
-          sample += Math.sin(2 * Math.PI * tone.freq * localT) * tone.amp * attack * decay;
-        }
-      }
-      const boosted = Math.max(-0.98, Math.min(0.98, sample * linearGain));
-      view.setInt16(44 + i * 2, Math.round(boosted * 32767), true);
-    }
-
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const uri = `data:audio/wav;base64,${typeof btoa === 'function' ? btoa(binary) : ''}`;
-    if (this.wavCache.size > 24) this.wavCache.clear();
-    this.wavCache.set(key, uri);
-    return uri;
-  }
-
-  private getAudioElement(): HTMLAudioElement | null {
-    if (typeof window === 'undefined') return null;
-    if (this.htmlAudioPool.length === 0) {
-      for (let i = 0; i < 4; i++) {
-        const el = new Audio();
-        el.preload = 'auto';
-        el.setAttribute('playsinline', 'true');
-        el.setAttribute('webkit-playsinline', 'true');
-        el.setAttribute('x-webkit-airplay', 'deny');
-        this.htmlAudioPool.push(el);
-      }
-    }
-    const chosen = this.htmlAudioPool[this.poolIndex];
-    this.poolIndex = (this.poolIndex + 1) % this.htmlAudioPool.length;
-    return chosen;
-  }
-
-  /**
-   * Desbloquea y pre-autoriza la cola de elementos HTML5 Audio con cualquier toque del usuario.
-   * En iOS Safari esto garantiza que el audio se reproduzca incluso si el interruptor físico
-   * o modo silencio está activado, sin interrumpir Spotify ni Apple Music.
-   */
-  public primeAudioPool(): void {
-    if (typeof window === 'undefined' || this.audioPoolPrimed) return;
-    this.audioPoolPrimed = true;
-    const SILENT_SAMPLE_WAV =
-      'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
-    if (this.htmlAudioPool.length === 0) {
-      this.getAudioElement();
-    }
-    this.htmlAudioPool.forEach((el) => {
-      try {
-        if (!el.src) el.src = SILENT_SAMPLE_WAV;
-        el.volume = 0.001;
-        const p = el.play();
-        if (p !== undefined) {
-          p.then(() => {
-            el.pause();
-            el.currentTime = 0;
-          }).catch(() => undefined);
-        }
-      } catch {
-        // Ignore
-      }
-    });
-  }
-
-  private playMediaWav(
-    tones: { freq: number; startSec: number; durSec: number; amp: number }[],
-    totalSec: number
-  ): void {
-    if (typeof window === 'undefined' || this.settings.gainPercent <= 0) return;
-    try {
-      this.configurePlaybackSession();
-      const uri = this.buildWavDataUri(tones, totalSec);
-      const el = this.getAudioElement();
-      if (!el) return;
-      if (el.src !== uri) {
-        el.src = uri;
-        el.load();
-      }
-      const vol = Math.min(1.0, Math.max(0.15, this.settings.gainPercent / 100));
-      el.volume = vol;
-      el.currentTime = 0;
-      const playPromise = el.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => undefined);
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  /**
-   * Emite el beep de cuenta regresiva mediante un elemento HTML5 Audio.
-   * En iOS Safari los elementos HTML5 Audio se enrutan por el canal multimedia y
-   * SE REPRODUCEN AUNQUE EL DISPOSITIVO ESTÉ EN MODO SILENCIO (con el interruptor naranja activo).
-   */
-  private playMediaElementCountdownPip(secondRemaining: 5 | 4 | 3 | 2 | 1): void {
-    const profile = this.settings.profile;
-    const isLast = secondRemaining === 1;
-
-    if (profile === 'minimal') {
-      // 1. Beep Digital Clásico (1000 Hz)
-      const dur = isLast ? 0.38 : 0.10;
-      this.playMediaWav([{ freq: 1000, startSec: 0, durSec: dur, amp: 0.90 }], dur + 0.02);
-    } else if (profile === 'boxing') {
-      // 2. Campana de Boxeo (clink metálico de aviso)
-      const dur = isLast ? 0.45 : 0.16;
-      this.playMediaWav(
-        [
-          { freq: 880, startSec: 0, durSec: dur, amp: 0.50 },
-          { freq: 1320, startSec: 0, durSec: dur * 0.9, amp: 0.70 },
-          { freq: 1760, startSec: 0, durSec: dur * 0.7, amp: 0.40 },
-          { freq: 2640, startSec: 0, durSec: dur * 0.5, amp: 0.25 },
-        ],
-        dur + 0.02
-      );
-    } else {
-      // 3. Chicharra Deportiva (buzzer pulse)
-      const dur = isLast ? 0.40 : 0.11;
-      this.playMediaWav(
-        [
-          { freq: 196, startSec: 0, durSec: dur, amp: 0.65 },
-          { freq: 392, startSec: 0, durSec: dur, amp: 0.55 },
-          { freq: 588, startSec: 0, durSec: dur, amp: 0.70 },
-          { freq: 784, startSec: 0, durSec: dur, amp: 0.85 },
-          { freq: 980, startSec: 0, durSec: dur, amp: 0.90 },
-          { freq: 1176, startSec: 0, durSec: dur, amp: 0.60 },
-        ],
-        dur + 0.02
-      );
-    }
-  }
-
-  /**
-   * Emite el aviso de cambio o fin de intervalo mediante un elemento HTML5 Audio.
-   * En iOS Safari los elementos HTML5 Audio se enrutan por el canal multimedia y
-   * SE REPRODUCEN AUNQUE EL DISPOSITIVO ESTÉ EN MODO SILENCIO.
-   */
-  private playMediaElementCompletionCue(cueType: 'finish' | 'work' | 'rest'): void {
-    const profile = this.settings.profile;
-
-    if (profile === 'minimal') {
-      // 1. Beep Digital Clásico: GO / CAMBIO (salto 1000 Hz -> 2000 Hz)
-      this.playMediaWav(
-        [
-          { freq: 1000, startSec: 0, durSec: 0.10, amp: 0.92 },
-          { freq: 2000, startSec: 0.10, durSec: 0.55, amp: 0.92 },
-        ],
-        0.66
-      );
-    } else if (profile === 'boxing') {
-      // 2. Campana de Boxeo: Campanazo de asalto
-      if (cueType === 'work') {
-        // Doble campanazo (¡DING! ... ¡DING!)
-        this.playMediaWav(
-          [
-            { freq: 587.33, startSec: 0, durSec: 0.7, amp: 0.40 },
-            { freq: 1174.66, startSec: 0, durSec: 0.6, amp: 0.75 },
-            { freq: 1396.91, startSec: 0, durSec: 0.5, amp: 0.50 },
-            { freq: 1760.00, startSec: 0, durSec: 0.4, amp: 0.40 },
-            { freq: 587.33, startSec: 0.26, durSec: 1.5, amp: 0.45 },
-            { freq: 1174.66, startSec: 0.26, durSec: 1.4, amp: 0.85 },
-            { freq: 1396.91, startSec: 0.26, durSec: 1.1, amp: 0.60 },
-            { freq: 1760.00, startSec: 0.26, durSec: 0.9, amp: 0.50 },
-            { freq: 2349.32, startSec: 0.26, durSec: 0.6, amp: 0.35 },
-          ],
-          1.8
-        );
-      } else {
-        // Campanazo único de descanso / fin
-        this.playMediaWav(
-          [
-            { freq: 587.33, startSec: 0, durSec: 1.8, amp: 0.45 },
-            { freq: 1174.66, startSec: 0, durSec: 1.6, amp: 0.85 },
-            { freq: 1396.91, startSec: 0, durSec: 1.3, amp: 0.60 },
-            { freq: 1760.00, startSec: 0, durSec: 1.0, amp: 0.50 },
-            { freq: 2349.32, startSec: 0, durSec: 0.7, amp: 0.35 },
-          ],
-          1.85
-        );
-      }
-    } else {
-      // 3. Chicharra Deportiva: Bocinazo de marcador (0.72s)
-      this.playMediaWav(
-        [
-          { freq: 185, startSec: 0, durSec: 0.72, amp: 0.55 },
-          { freq: 370, startSec: 0, durSec: 0.72, amp: 0.65 },
-          { freq: 555, startSec: 0, durSec: 0.72, amp: 0.80 },
-          { freq: 740, startSec: 0, durSec: 0.72, amp: 0.95 },
-          { freq: 925, startSec: 0, durSec: 0.72, amp: 0.95 },
-          { freq: 1110, startSec: 0, durSec: 0.72, amp: 0.70 },
-          { freq: 1295, startSec: 0, durSec: 0.72, amp: 0.50 },
-        ],
-        0.74
-      );
-    }
+    this.configureAmbientSession();
   }
 
   /** Estado actual del motor de audio para diagnósticos de la UI. */
@@ -442,7 +196,6 @@ class KairosAudioEngine {
     const ctx = this.ctx as AudioContext;
     if (fromGesture) {
       this.primeWithSilentBuffer(ctx);
-      this.primeAudioPool();
     }
 
     if ((ctx.state as string) !== 'running') {
@@ -467,7 +220,6 @@ class KairosAudioEngine {
     this.autoUnlockInstalled = true;
 
     const onGesture = () => {
-      this.primeAudioPool();
       if (!this.ctx || (this.ctx.state as string) !== 'running' || this.needsRecreate) {
         this.unlock(true);
       }
@@ -502,7 +254,7 @@ class KairosAudioEngine {
   public setKeepAlive(active: boolean): void {
     this.keepAliveWanted = active;
     if (active) {
-      this.configurePlaybackSession();
+      this.configureAmbientSession();
       this.unlock();
       this.startKeepAliveSource();
     } else {
@@ -651,13 +403,10 @@ class KairosAudioEngine {
     this.pulseTransientAudioSession(secondRemaining === 1 ? 700 : 260);
 
     this.unlock();
-    // 1. Síntesis Web Audio con sesión 'ambient' para nunca pausar Apple Music ni Spotify.
+    // Síntesis Web Audio pura en sesión 'ambient' para sonar por encima sin pausar Apple Music ni Spotify.
     this.withRunningContext((c, _master, now) =>
       this.synthCountdownPip(c, now, secondRemaining)
     );
-
-    // 2. Elemento multimedia HTML5 (bypasses Silent Switch en iOS incluso si el celular está en modo silencio)
-    this.playMediaElementCountdownPip(secondRemaining);
   }
 
   private synthCountdownPip(
@@ -774,11 +523,8 @@ class KairosAudioEngine {
     this.pulseTransientAudioSession(1150);
 
     this.unlock();
-    // 1. Síntesis Web Audio con dinámica y ecualización
+    // Síntesis Web Audio pura en sesión 'ambient' con dinámica y ecualización sin pausar música de fondo.
     this.withRunningContext((c, _master, now) => this.synthCompletionCue(c, now, cueType));
-
-    // 2. Elemento multimedia HTML5 (bypasses Silent Switch en iOS incluso si el celular está en modo silencio)
-    this.playMediaElementCompletionCue(cueType);
   }
 
   private synthCompletionCue(
